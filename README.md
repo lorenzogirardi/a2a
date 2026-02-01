@@ -29,10 +29,19 @@ Questo progetto nasce per rispondere a domande fondamentali sui sistemi multi-ag
 └─────────────────┘       └───────────────┬─────────────────┘
                                           │
                           ┌───────────────▼─────────────────┐
+                          │  LangGraph Orchestration        │
+                          │  Analyze → Discover → Execute   │
+                          │              ↓                  │
+                          │          Synthesize             │
+                          └───────────────┬─────────────────┘
+                                          │
+                          ┌───────────────▼─────────────────┐
                           │  Agents                         │
                           │  ├── Simple (Echo, Calc, etc.)  │
                           │  ├── Research (Fan-out/Fan-in)  │
-                          │  └── Chain (Writer→Editor→Pub)  │
+                          │  ├── Chain (Writer→Editor→Pub)  │
+                          │  └── Specialists (Analysis,     │
+                          │       Estimation, Research...)  │
                           └───────────────┬─────────────────┘
                                           │
                           ┌───────────────▼─────────────────┐
@@ -45,15 +54,19 @@ Questo progetto nasce per rispondere a domande fondamentali sui sistemi multi-ag
 | Layer | Technology |
 |-------|------------|
 | Language | Python 3.11+ |
+| Orchestration | **LangGraph** (DAG-based) |
 | MCP Server | FastMCP |
 | HTTP API | FastAPI |
 | Validation | Pydantic v2 |
 | Storage | Abstract (memory → file → PostgreSQL) |
 | Auth | Role-based permissions |
-| LLM | LiteLLM (Claude, OpenAI, etc.) |
+| LLM | Anthropic SDK (direct) |
 | Streaming | Server-Sent Events (SSE) |
+| Visualization | vis.js (real-time graph) |
 | Testing | pytest (Test Pyramid) |
 | Container | Docker + Docker Compose |
+
+> **Nota**: Usiamo LangGraph per l'orchestrazione DAG, ma **non LangChain**. Le chiamate LLM usano direttamente Anthropic SDK per semplicità e controllo. Vedi [architectural decision](docs/software-architecture/langgraph-pattern.md#architectural-decision-why-langgraph-but-not-langchain).
 
 ## Quick Start
 
@@ -65,7 +78,10 @@ cd a2a
 # Start with Docker
 docker-compose up -d
 
-# Open Chain Pipeline Demo
+# Open LangGraph Visualizer (recommended)
+open http://localhost:8000/static/graph/
+
+# Or Chain Pipeline Demo
 open http://localhost:8000/static/chain/
 
 # Or install locally
@@ -80,13 +96,19 @@ a2a/
 ├── agents/
 │   ├── base.py          # AgentBase class
 │   ├── simple_agent.py  # Echo, Counter, Router, Calculator
-│   ├── llm_agent.py     # LLM-based agents (LiteLLM)
+│   ├── llm_agent.py     # LLM-based agents
+│   ├── registry.py      # AgentRegistry for discovery
 │   ├── research/        # Research Assistant (fan-out/fan-in)
-│   └── chain/           # Chain Pipeline (sequential)
-│       ├── writer.py    # WriterAgent
-│       ├── editor.py    # EditorAgent
-│       ├── publisher.py # PublisherAgent
-│       └── pipeline.py  # ChainPipeline orchestrator
+│   ├── chain/           # Chain Pipeline (sequential)
+│   ├── router/          # Smart Router + Specialists
+│   │   ├── analyzer.py      # AnalyzerAgent (capability detection)
+│   │   ├── synthesizer.py   # SynthesizerAgent (output integration)
+│   │   └── specialist_agents.py  # Research, Estimation, Analysis...
+│   └── graph/           # LangGraph Integration
+│       ├── state.py     # GraphState TypedDict
+│       ├── nodes.py     # Analyze, Discover, Execute, Synthesize
+│       ├── graph.py     # StateGraph builder
+│       └── runner.py    # GraphRunner with SSE streaming
 ├── storage/
 │   ├── base.py          # StorageBase interface
 │   ├── memory.py        # MemoryStorage
@@ -100,9 +122,10 @@ a2a/
 │   ├── sse.py           # SSE transport
 │   └── chain_router.py  # Chain API endpoints
 ├── static/
-│   └── chain/           # Chain Pipeline Demo UI
+│   ├── chain/           # Chain Pipeline Demo UI
+│   └── graph/           # LangGraph Visualizer
 │       ├── index.html
-│       ├── app.js
+│       ├── app.js       # vis.js + SSE integration
 │       └── style.css
 ├── tests/
 │   ├── unit/            # 70% - Fast, isolated
@@ -142,6 +165,18 @@ a2a/
 | `CodeSearchAgent` | Ricerca nel codice |
 | `OrchestratorAgent` | Coordina ricerche parallele |
 
+### Specialist Agents (LangGraph)
+
+| Agente | Capability | Descrizione |
+|--------|------------|-------------|
+| `AnalyzerAgent` | - | Estrae capabilities dal task |
+| `ResearchAgent` | `research` | Ricerca informazioni |
+| `EstimationAgent` | `estimation` | Stime costi/tempi |
+| `AnalysisAgent` | `analysis` | Analisi pro/contro |
+| `TranslationAgent` | `translation` | Traduzione testi |
+| `SummaryAgent` | `summary` | Riassunto testi |
+| `SynthesizerAgent` | - | Integra output multipli |
+
 ## Demo Interattive
 
 ### Chain Pipeline Demo
@@ -168,6 +203,45 @@ graph LR
     W & E & Pub --> SSE[SSE Events]
     SSE --> UI[Live UI]
 ```
+
+### LangGraph Execution Visualizer
+
+Orchestrazione DAG con visualizzazione real-time:
+
+```bash
+open http://localhost:8000/static/graph/
+```
+
+[![Demo LangGraph](https://res.cloudinary.com/ethzero/video/upload/so_3,w_800/v1769976053/ai/a2a/agent-discovery-graph.jpg)](https://res.cloudinary.com/ethzero/video/upload/v1769976053/ai/a2a/agent-discovery-graph.mp4)
+
+*Clicca per vedere il video demo*
+
+**Features:**
+- 🔄 DAG orchestration con LangGraph
+- 🎯 Selezione automatica agenti per capability
+- ⚡ Esecuzione parallela con `asyncio.gather`
+- 🔀 Conditional routing (synthesize se 2+ output)
+- 📊 Visualizzazione real-time con vis.js
+- 📡 SSE per aggiornamenti live
+
+```mermaid
+graph LR
+    T[Task] --> A[Analyze]
+    A -->|capabilities| D[Discover]
+    D -->|agents| E[Execute]
+    E -->|2+ outputs| S[Synthesize]
+    E -->|1 output| O[Output]
+    S --> O
+```
+
+**Come funziona la selezione agenti:**
+
+1. **Analyze**: LLM estrae capabilities dal task (es. "budget" → `estimation`)
+2. **Discover**: Registry cerca agenti che dichiarano quella capability
+3. **Execute**: Agenti eseguiti in parallelo sui rispettivi subtask
+4. **Synthesize**: Se 2+ risposte, LLM le integra in un output coerente
+
+Vedi [documentazione dettagliata](docs/software-architecture/langgraph-execution-example.md).
 
 ### Smart Task Router
 
