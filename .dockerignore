@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*.so
+.venv
+venv
+.eggs
+*.egg-info
+
+# IDE
+.idea
+.vscode
+*.swp
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+
+# Local data
+data/
+
+# Claude
+.claude
+
+# Docs and specs
+docs/
+specs/
+
+# Tests (optional - uncomment to include)
+# tests/

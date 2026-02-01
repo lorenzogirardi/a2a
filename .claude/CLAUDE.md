@@ -3,7 +3,8 @@
 | Rule | When | Action |
 |------|------|--------|
 | **Status Check** | Session start/end | Read and update `status.md` |
-| **Use venv** | Running Python/tests | `source .venv/bin/activate` |
+| **Use Docker** | Running/testing app | `docker-compose up` |
+| **Use venv** | Local Python dev | `source .venv/bin/activate` |
 | **TDD** | Always | Red -> Green -> Refactor -> Commit |
 | **Test Pyramid** | Writing tests | Unit (70%) > Integration (20%) > E2E (10%) |
 | **Documentation** | New features/changes | Update relevant docs/ section |
@@ -184,6 +185,45 @@ a2a/
 - Use diagrams (Mermaid preferred)
 - Document WHY, not just WHAT
 - Update docs with code changes (same PR/commit)
+
+---
+
+# Docker (MANDATORY)
+
+**All services run in Docker.**
+
+## Quick Start
+```bash
+# Start everything (app + postgres)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f app
+
+# Stop
+docker-compose down
+```
+
+## Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `app` | 8000 | FastAPI + FastMCP server |
+| `postgres` | 5432 | PostgreSQL database |
+
+## Endpoints (when running)
+
+- Health: http://localhost:8000/health
+- API Docs: http://localhost:8000/docs
+- Research: http://localhost:8000/api/research?q=...
+
+## Development vs Production
+
+| Context | Command |
+|---------|---------|
+| **Run app** | `docker-compose up` |
+| **Run tests** | `source .venv/bin/activate && pytest` |
+| **Quick Python** | `source .venv/bin/activate` |
 
 ---
 
