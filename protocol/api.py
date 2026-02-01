@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from auth.permissions import CallerContext, Role, PermissionDenied
 from .mcp_server import get_agents, get_storage, setup_default_agents
+from .sse import router as sse_router
 
 # ============================================
 # Pydantic Models
@@ -72,6 +73,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Include SSE router
+app.include_router(sse_router)
 
 
 # ============================================

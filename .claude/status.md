@@ -48,6 +48,11 @@
   - [x] asyncpg implementation
   - [x] Connection pooling
   - [x] 12 integration tests
+- [x] **SSE Transport** (Infrastructure)
+  - [x] Real-time streaming events
+  - [x] Tool calls via HTTP POST
+  - [x] Event broadcasting
+  - [x] 8 integration tests
 
 ---
 
@@ -75,7 +80,7 @@
 
 ### Priority 4 (Future)
 1. ~~Database storage (PostgreSQL)~~ ✓
-2. SSE transport for MCP
+2. ~~SSE transport for MCP~~ ✓
 3. Additional use cases
 4. Populate documentation
 
