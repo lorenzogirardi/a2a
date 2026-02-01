@@ -94,28 +94,20 @@ class TestMemoryStorage:
         messages = await storage.get_messages("nonexistent")
         assert messages == []
 
-    def test_get_all_conversations(self, storage):
+    @pytest.mark.asyncio
+    async def test_get_all_conversations(self, storage):
         """Should return all conversations."""
-        import asyncio
-
-        async def setup():
-            await storage.create_conversation(["a", "b"])
-            await storage.create_conversation(["c", "d"])
-
-        asyncio.get_event_loop().run_until_complete(setup())
+        await storage.create_conversation(["a", "b"])
+        await storage.create_conversation(["c", "d"])
 
         convs = storage.get_all_conversations()
         assert len(convs) == 2
 
-    def test_get_all_states(self, storage):
+    @pytest.mark.asyncio
+    async def test_get_all_states(self, storage):
         """Should return all agent states."""
-        import asyncio
-
-        async def setup():
-            await storage.save_agent_state("agent-1", {"x": 1})
-            await storage.save_agent_state("agent-2", {"y": 2})
-
-        asyncio.get_event_loop().run_until_complete(setup())
+        await storage.save_agent_state("agent-1", {"x": 1})
+        await storage.save_agent_state("agent-2", {"y": 2})
 
         states = storage.get_all_states()
         assert len(states) == 2
