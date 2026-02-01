@@ -15,6 +15,7 @@ from auth.permissions import CallerContext, Role, PermissionDenied
 from .mcp_server import get_agents, get_storage, setup_default_agents
 from .sse import router as sse_router
 from .chain_router import router as chain_router
+from .router_api import router as router_api
 
 # ============================================
 # Pydantic Models
@@ -83,10 +84,18 @@ app.include_router(sse_router)
 # Include Chain router
 app.include_router(chain_router)
 
+# Include Router API
+app.include_router(router_api)
+
 # Mount static files for chain demo
 _static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "chain")
 if os.path.exists(_static_dir):
     app.mount("/static/chain", StaticFiles(directory=_static_dir, html=True), name="chain-static")
+
+# Mount static files for router demo
+_router_static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "router")
+if os.path.exists(_router_static_dir):
+    app.mount("/static/router", StaticFiles(directory=_router_static_dir, html=True), name="router-static")
 
 
 # ============================================

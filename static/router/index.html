@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Task Router - A2A</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Smart Task Router</h1>
+            <p class="subtitle">Intelligent capability-based task routing</p>
+        </header>
+
+        <!-- Input Section -->
+        <section class="input-section">
+            <div class="task-container">
+                <label for="task">Enter a task:</label>
+                <textarea id="task" placeholder="e.g., calcola 15 * 3 e scrivi un haiku sul risultato"></textarea>
+            </div>
+            <button id="routeBtn" class="route-button">
+                <span class="btn-text">Route Task</span>
+                <span class="btn-loader" style="display: none;">...</span>
+            </button>
+        </section>
+
+        <!-- Main Content Grid -->
+        <div class="main-grid">
+            <!-- Left Column: Steps -->
+            <div class="steps-column">
+                <!-- Step 1: Analyze -->
+                <section class="step-section" id="step-analyze">
+                    <div class="step-header">
+                        <span class="step-number">1</span>
+                        <h2>Analyze Task</h2>
+                        <span class="step-status" id="analyze-status">Waiting</span>
+                    </div>
+                    <div class="step-content">
+                        <p class="step-description">LLM analizza il task per estrarre le capability richieste</p>
+                        <div id="detected-capabilities" class="capabilities-list">
+                            <div class="placeholder">Capabilities will appear here...</div>
+                        </div>
+                        <div id="subtasks-list" class="subtasks-list"></div>
+                    </div>
+                </section>
+
+                <!-- Step 2: Discover -->
+                <section class="step-section" id="step-discover">
+                    <div class="step-header">
+                        <span class="step-number">2</span>
+                        <h2>Discover Agents</h2>
+                        <span class="step-status" id="discover-status">Waiting</span>
+                    </div>
+                    <div class="step-content">
+                        <p class="step-description">Registry cerca agenti con le capability richieste</p>
+                        <div id="discovery-results" class="discovery-results">
+                            <div class="placeholder">Agent matches will appear here...</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Step 3: Execute -->
+                <section class="step-section" id="step-execute">
+                    <div class="step-header">
+                        <span class="step-number">3</span>
+                        <h2>Execute Tasks</h2>
+                        <span class="step-status" id="execute-status">Waiting</span>
+                    </div>
+                    <div class="step-content">
+                        <p class="step-description">Ogni agente esegue il proprio subtask</p>
+                        <div id="execution-results" class="execution-results">
+                            <div class="placeholder">Execution results will appear here...</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column: Registry -->
+            <div class="registry-column">
+                <section class="registry-section">
+                    <h2>Agent Registry</h2>
+                    <div id="registry-list" class="registry-list">
+                        <div class="placeholder">Loading agents...</div>
+                    </div>
+                </section>
+
+                <!-- Final Output -->
+                <section class="output-section">
+                    <h2>Final Output</h2>
+                    <div id="final-output" class="final-output">
+                        <div class="placeholder">Results will appear here...</div>
+                    </div>
+                </section>
+
+                <!-- Metrics -->
+                <section class="metrics-section">
+                    <h2>Metrics</h2>
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <span class="metric-value" id="metric-duration">-</span>
+                            <span class="metric-label">Duration</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-value" id="metric-agents">-</span>
+                            <span class="metric-label">Agents Used</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-value" id="metric-capabilities">-</span>
+                            <span class="metric-label">Capabilities</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- Timeline -->
+        <section class="timeline-section">
+            <h2>Event Timeline</h2>
+            <div id="timeline" class="timeline">
+                <div class="placeholder">Events will appear here when routing starts...</div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
