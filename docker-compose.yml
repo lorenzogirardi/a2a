@@ -8,10 +8,9 @@ services:
       HOST: "0.0.0.0"
       PORT: "8000"
       DATABASE_URL: "postgresql://a2a:a2a_dev_password@postgres:5432/a2a"
-      # LiteLLM - imposta la chiave API per il provider che usi
+      # LiteLLM - API keys from .env
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      # Opzionale: per proxy LiteLLM custom
-      # LITELLM_API_BASE: "${LITELLM_API_BASE:-}"
+      ANTHROPIC_BASE_URL: "${ANTHROPIC_BASE_URL:-}"
     depends_on:
       postgres:
         condition: service_healthy
