@@ -1,23 +1,74 @@
-# Documentation
+# A2A Documentation
 
-This project maintains documentation across three architectural layers:
+Agent-to-Agent communication and orchestration framework.
+
+## Quick Links
+
+| I want to... | Go to |
+|--------------|-------|
+| Understand the business context | [Enterprise Architecture](enterprise-architecture/) |
+| See how components work | [Software Architecture](software-architecture/) |
+| Deploy and operate | [Platform Architecture](platform-architecture/) |
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Enterprise"
+        BC[Business Capabilities]
+        DM[Domain Model]
+    end
+
+    subgraph "Software"
+        AG[Agents]
+        ST[Storage]
+        PR[Protocol]
+    end
+
+    subgraph "Platform"
+        DC[Docker]
+        PG[PostgreSQL]
+        MO[Monitoring]
+    end
+
+    BC --> AG
+    DM --> ST
+    AG --> DC
+    ST --> PG
+    PR --> MO
+```
 
 ## Structure
 
 ```
 docs/
-├── enterprise-architecture/   # Business context and strategy
-├── software-architecture/     # Application design and patterns
-└── platform-architecture/     # Infrastructure and deployment
+├── enterprise-architecture/
+│   ├── README.md          # Business capabilities, domain model
+│   └── adr/               # Architecture Decision Records
+├── software-architecture/
+│   └── README.md          # Components, patterns, APIs
+└── platform-architecture/
+    └── README.md          # Docker, database, operations
 ```
 
-## Layers
+## Key Concepts
 
-### [Enterprise Architecture](enterprise-architecture/)
-Business capabilities, domains, and strategic alignment.
+| Concept | Description |
+|---------|-------------|
+| **Agent** | Autonomous unit that receives messages, thinks, acts, responds |
+| **Storage** | Pluggable persistence (Memory, File, PostgreSQL) |
+| **Protocol** | Communication layer (MCP, REST, SSE) |
+| **CallerContext** | Identity and permissions of the caller |
 
-### [Software Architecture](software-architecture/)
-Components, patterns, APIs, and code organization.
+## Getting Started
 
-### [Platform Architecture](platform-architecture/)
-Infrastructure, deployment, security, and operations.
+```bash
+# Start the system
+docker-compose up -d
+
+# Check health
+curl http://localhost:8000/health
+
+# Try research API
+curl "http://localhost:8000/api/research?q=python"
+```

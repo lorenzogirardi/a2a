@@ -53,6 +53,10 @@
   - [x] Tool calls via HTTP POST
   - [x] Event broadcasting
   - [x] 8 integration tests
+- [x] **Documentation** (docs/)
+  - [x] Enterprise Architecture (capabilities, domain, ADRs)
+  - [x] Software Architecture (components, patterns, APIs)
+  - [x] Platform Architecture (Docker, DB, operations)
 
 ---
 
@@ -82,7 +86,7 @@
 1. ~~Database storage (PostgreSQL)~~ ✓
 2. ~~SSE transport for MCP~~ ✓
 3. Additional use cases
-4. Populate documentation
+4. ~~Populate documentation~~ ✓
 
 ---
 
