@@ -1,6 +1,6 @@
 # Project Status
 
-## Current Phase: Foundation
+## Current Phase: Use Cases
 ## Last Updated: 2026-02-01
 
 ---
@@ -21,11 +21,17 @@
   - [x] status.md for progress tracking
   - [x] Skills: python, mcp, scm, spec-driven-dev
   - [x] Templates: spec.md, tasks.md
+- [x] **Research Assistant** (Use Case #1)
+  - [x] Parallel search agents (Web, Docs, Code)
+  - [x] MergeAgent for result aggregation
+  - [x] OrchestratorAgent (fan-out/fan-in pattern)
+  - [x] FastAPI + FastMCP integration
+  - [x] Unit + Integration tests
 
 ---
 
 ## In Progress
-- [x] Refactor protocol/ to use FastMCP + FastAPI (DONE)
+- [ ] Select next use case to implement
 
 ---
 
@@ -37,16 +43,16 @@
 3. ~~Create initial tests for agents~~ ✓
 4. ~~Test both MCP and REST interfaces~~ ✓
 
-### Priority 2 (Short-term)
+### Priority 2 (Short-term) - COMPLETED
+1. ~~Agent orchestration patterns~~ ✓ (Research Assistant)
+2. ~~Multi-agent workflows~~ ✓ (Fan-out/Fan-in pattern)
+
+### Priority 3 (Next)
 1. Add file-based storage (FileStorage)
 2. Implement LLM agent with real Claude calls
 3. Add agent discovery mechanism
-
-### Priority 3 (Future)
-1. Database storage (SQLite/PostgreSQL)
-2. Agent orchestration patterns
-3. Multi-agent workflows
-4. SSE transport for MCP
+4. Database storage (SQLite/PostgreSQL)
+5. SSE transport for MCP
 
 ---
 
@@ -65,6 +71,7 @@
 | Agent pattern | think/act/respond | Clear separation of concerns | 2026-02-01 |
 | **MCP Server** | **FastMCP** | Decorator-based, simpler than raw mcp | 2026-02-01 |
 | **HTTP API** | **FastAPI** | REST for non-MCP clients, shared Pydantic | 2026-02-01 |
+| **Multi-Agent Pattern** | **Fan-out/Fan-in** | Parallel search, then merge results | 2026-02-01 |
 
 ---
 
@@ -121,3 +128,17 @@ User -> CallerContext -> Agent.receive_message() -> think() -> act() -> Response
     - tests/e2e/test_fastapi.py
   - Added pyproject.toml with pytest config
   - Fixed security workflow (semgrep container, trufflehog first push)
+- **Research Assistant Implementation** (Use Case #1):
+  - Created `agents/research/` module:
+    - `models.py`: SearchResult, AggregatedResult (Pydantic)
+    - `base.py`: SearchAgentBase abstract class
+    - `web_search.py`: WebSearchAgent (mock data)
+    - `doc_search.py`: DocSearchAgent (mock data)
+    - `code_search.py`: CodeSearchAgent (mock data)
+    - `merge.py`: MergeAgent (aggregation + deduplication)
+    - `orchestrator.py`: OrchestratorAgent (parallel fan-out/fan-in)
+  - Added `/api/research?q=...` endpoint (FastAPI)
+  - Added `research(query)` tool (FastMCP)
+  - Tests: `test_research_agents.py`, `test_research_pipeline.py`
+  - Fixed Bandit B104: env vars for host binding
+  - Created spec and tasks in `specs/`
