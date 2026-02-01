@@ -23,6 +23,211 @@ The demo implements a document processing pipeline:
 2. **EditorAgent** - Improves style, grammar, and clarity
 3. **PublisherAgent** - Formats for publication with title and sections
 
+---
+
+## Complete Example: "Il futuro della moda sostenibile"
+
+This section shows **real output** from a pipeline execution, demonstrating how each agent transforms the content.
+
+### Input
+
+```
+Prompt: "Il futuro della moda sostenibile"
+```
+
+---
+
+### Step 1: WriterAgent
+
+**Role**: Content generation - creates initial draft from topic
+
+| Metric | Value |
+|--------|-------|
+| Duration | 9.2s |
+| Input Tokens | 91 |
+| Output Tokens | 431 |
+| Model | claude-sonnet-4-5 |
+
+**System Prompt**:
+> "Sei uno scrittore professionista. Quando ricevi un topic, genera un testo iniziale di 2-3 paragrafi. Sii creativo ma informativo."
+
+**Output**:
+
+```markdown
+# Il futuro della moda sostenibile
+
+La moda sostenibile non è più un'opzione di nicchia, ma sta diventando
+rapidamente il nuovo standard dell'industria tessile globale. Mentre i
+consumatori diventano sempre più consapevoli dell'impatto ambientale delle
+loro scelte d'acquisto, i brand sono costretti a ripensare radicalmente i
+loro processi produttivi. Dalle fibre innovative ricavate da scarti
+alimentari ai sistemi di economia circolare che trasformano vecchi capi in
+nuove collezioni, l'industria della moda sta vivendo una rivoluzione
+silenziosa ma profonda. La sfida principale resta quella di bilanciare
+sostenibilità, accessibilità economica e desiderabilità estetica, tre
+elementi che storicamente hanno faticato a convivere.
+
+Il futuro della moda sostenibile passa attraverso l'innovazione tecnologica
+e un cambiamento culturale nel modo in cui concepiamo il consumo di
+abbigliamento. La blockchain sta permettendo una tracciabilità totale della
+filiera produttiva, mentre l'intelligenza artificiale ottimizza la
+produzione riducendo gli sprechi. Ma la vera rivoluzione risiede
+nell'adozione di modelli di business alternativi: dal noleggio di abiti di
+alta gamma alla riparazione professionale dei capi danneggiati, fino ai
+marketplace di seconda mano che stanno sdoganando l'usato come scelta di
+stile e non più di necessità. Entro il 2030, gli esperti prevedono che
+almeno il 60% dei consumatori globali privilegerà brand con credenziali
+ambientali verificate, trasformando la sostenibilità da vantaggio
+competitivo a requisito minimo per sopravvivere nel mercato.
+```
+
+**What the Writer did**:
+- Generated 2 paragraphs from the topic
+- Introduced key concepts (circular economy, blockchain, AI)
+- Added statistics (60% by 2030)
+- Created engaging, informative content
+
+---
+
+### Step 2: EditorAgent
+
+**Role**: Quality improvement - refines grammar, style, clarity
+
+| Metric | Value |
+|--------|-------|
+| Duration | 4.6s |
+| Input Tokens | 534 |
+| Output Tokens | 428 |
+| Model | claude-sonnet-4-5 |
+
+**System Prompt**:
+> "Sei un editor professionista. Correggi errori grammaticali, migliora lo stile e la fluidità, rendi il testo più chiaro e conciso. Mantieni il significato originale."
+
+**Changes Made** (diff from Writer's output):
+
+```diff
+- Mentre i consumatori diventano sempre più consapevoli
++ Mentre i consumatori acquisiscono maggiore consapevolezza
+
+- i brand sono costretti a ripensare radicalmente i loro processi produttivi
++ i brand sono costretti a ripensare radicalmente i processi produttivi
+
+- La sfida principale resta quella di bilanciare
++ La sfida principale resta bilanciare
+
+- tre elementi che storicamente hanno faticato a convivere.
++ tre elementi che storicamente hanno faticato a convivere:
+
+- La blockchain sta permettendo
++ La blockchain consente
+
+- requisito minimo per sopravvivere nel mercato
++ requisito minimo per la sopravvivenza sul mercato
+```
+
+**What the Editor did**:
+- Improved verb choices ("acquisiscono" vs "diventano")
+- Removed redundant words ("loro", "quella di")
+- Enhanced punctuation (colon for list introduction)
+- Made phrases more concise
+- Preserved all original meaning and content
+
+---
+
+### Step 3: PublisherAgent
+
+**Role**: Formatting - structures document for publication
+
+| Metric | Value |
+|--------|-------|
+| Duration | 5.7s |
+| Input Tokens | 529 |
+| Output Tokens | 550 |
+| Model | claude-sonnet-4-5 |
+
+**System Prompt**:
+> "Sei un publisher professionista. Formatta per la pubblicazione: aggiungi titolo, organizza in sezioni, aggiungi conclusione. Usa markdown."
+
+**Final Output**:
+
+```markdown
+# Il futuro della moda sostenibile
+
+## Una rivoluzione in corso nell'industria tessile
+
+La moda sostenibile non è più un'opzione di nicchia, ma sta diventando
+rapidamente il nuovo standard dell'industria tessile globale. Mentre i
+consumatori acquisiscono maggiore consapevolezza dell'impatto ambientale
+delle loro scelte d'acquisto, i brand sono costretti a ripensare
+radicalmente i processi produttivi.
+
+Dalle fibre innovative ricavate da scarti alimentari ai sistemi di economia
+circolare che trasformano vecchi capi in nuove collezioni, l'industria della
+moda sta vivendo una rivoluzione silenziosa ma profonda. La sfida principale
+resta bilanciare sostenibilità, accessibilità economica e desiderabilità
+estetica: tre elementi che storicamente hanno faticato a convivere.
+
+## Tecnologia e nuovi modelli di business
+
+Il futuro della moda sostenibile passa attraverso l'innovazione tecnologica
+e un cambiamento culturale nel modo in cui concepiamo il consumo di
+abbigliamento. La **blockchain** consente una tracciabilità totale della
+filiera produttiva, mentre l'**intelligenza artificiale** ottimizza la
+produzione riducendo gli sprechi.
+
+Ma la vera rivoluzione risiede nell'adozione di modelli di business
+alternativi:
+
+- **Noleggio di abiti di alta gamma** - un'alternativa al possesso
+- **Riparazione professionale** - dare nuova vita ai capi danneggiati
+- **Marketplace di seconda mano** - l'usato come scelta di stile consapevole
+
+## Conclusione
+
+Entro il 2030, gli esperti prevedono che almeno il 60% dei consumatori
+globali privilegerà brand con credenziali ambientali verificate,
+trasformando la sostenibilità da vantaggio competitivo a requisito minimo
+per la sopravvivenza sul mercato.
+
+La moda sostenibile non rappresenta semplicemente una tendenza passeggera,
+ma una trasformazione irreversibile del settore: un nuovo paradigma in cui
+stile, etica e innovazione convergono per ridefinire il nostro rapporto con
+l'abbigliamento.
+```
+
+**What the Publisher did**:
+- Added section headers (`##`)
+- Created bullet list for business models
+- Added **bold** for key terms
+- Split long paragraphs for readability
+- Added new conclusion paragraph
+- Structured document with clear hierarchy
+
+---
+
+### Pipeline Summary
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                    PIPELINE EXECUTION SUMMARY                          │
+├────────────────────────────────────────────────────────────────────────┤
+│  Input: "Il futuro della moda sostenibile"                             │
+├──────────────┬──────────┬──────────────┬───────────────┬───────────────┤
+│    Agent     │ Duration │ Input Tokens │ Output Tokens │    Action     │
+├──────────────┼──────────┼──────────────┼───────────────┼───────────────┤
+│ WriterAgent  │   9.2s   │      91      │      431      │ Generate      │
+│ EditorAgent  │   4.6s   │     534      │      428      │ Improve       │
+│ PublisherAgent│  5.7s   │     529      │      550      │ Format        │
+├──────────────┼──────────┼──────────────┼───────────────┼───────────────┤
+│    TOTAL     │  19.5s   │    1,154     │     1,409     │               │
+└──────────────┴──────────┴──────────────┴───────────────┴───────────────┘
+
+Total Tokens: 2,563
+Estimated Cost: ~$0.02 (at $3/1M input, $15/1M output)
+```
+
+---
+
 ## Architecture
 
 ### Components
