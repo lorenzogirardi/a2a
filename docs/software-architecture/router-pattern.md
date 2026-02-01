@@ -458,6 +458,94 @@ registry.register(writer)
 
 ---
 
+## Two-Phase Execution (Context Preservation)
+
+When multiple agents execute in parallel, their outputs are independent. To create a coherent final response, the router implements **Two-Phase Execution**.
+
+### Architecture
+
+```mermaid
+graph TB
+    subgraph "Phase 1: Parallel Execution"
+        T[Task] --> A[Analyzer]
+        A --> R[Registry]
+        R --> E1[Agent 1]
+        R --> E2[Agent 2]
+        R --> E3[Agent 3]
+    end
+
+    subgraph "Phase 2: Synthesis"
+        E1 --> S[SynthesizerAgent]
+        E2 --> S
+        E3 --> S
+        S --> O[Coherent Output]
+    end
+```
+
+### How It Works
+
+1. **Phase 1**: All matched agents execute their subtasks in parallel
+2. **Phase 2**: If multiple agents succeeded, SynthesizerAgent integrates their outputs
+
+### SynthesizerAgent
+
+The Synthesizer receives:
+- Original task
+- All execution results with agent context
+
+It produces:
+- Unified response that integrates all information
+- Resolves contradictions
+- Maintains coherent narrative
+
+### Example: Complex Query
+
+**Task**: "quanto costerebbe costruire un razzo spaziale? analizza pro e contro"
+
+**Phase 1 (Parallel)**:
+| Agent | Capability | Output |
+|-------|------------|--------|
+| EstimationAgent | `estimation` | Detailed cost breakdown ($500M - $5B) |
+| AnalysisAgent | `analysis` | Pro/Contro analysis |
+
+**Phase 2 (Synthesis)**:
+- Synthesizer receives both outputs
+- Creates unified response with:
+  - Direct answer to cost question
+  - Integrated cost details
+  - Pro/Contro organized by category
+
+### Limitation: No Cross-Agent Context
+
+Agents in Phase 1 don't see each other's outputs. For example:
+
+```
+Task: "calcola 5+3 e scrivi un haiku sul risultato"
+
+Phase 1:
+  - Calculator: "8" ✓
+  - Writer: writes about "7" ❌ (doesn't know result is 8!)
+
+Phase 2:
+  - Synthesizer integrates but can't fix the mismatch
+```
+
+**Solution**: For tasks requiring sequential context, use:
+- Chain Pipeline pattern, or
+- Dependency Graph (future enhancement)
+
+### Available Specialist Agents
+
+| Agent | Capabilities | Use Case |
+|-------|--------------|----------|
+| ResearchAgent | `research`, `knowledge` | Facts, history, science questions |
+| EstimationAgent | `estimation`, `cost_analysis` | Cost, quantity, size estimates |
+| AnalysisAgent | `analysis`, `reasoning` | Problem breakdown, pro/contro |
+| TranslationAgent | `translation` | Language translation |
+| SummaryAgent | `summarization` | Text summarization |
+
+---
+
 ## Educational Points
 
 1. **Service Discovery** - Registry as agent catalog
