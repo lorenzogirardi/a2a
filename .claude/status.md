@@ -75,7 +75,11 @@
   - [x] API endpoints: /api/graph/run, /api/graph/stream, /api/graph/structure
   - [x] Live visualization webpage (static/graph/)
   - [x] Unit tests (36), Integration tests (7)
-  - [x] Documentation: docs/software-architecture/langgraph-pattern.md
+  - [x] Documentation:
+    - [x] langgraph-pattern.md (architecture + why not LangChain)
+    - [x] langgraph-execution-example.md (detailed walkthrough)
+    - [x] Demo video embedded (Cloudinary)
+  - [x] README updated with LangGraph section
 
 ---
 
@@ -127,6 +131,7 @@
 | **Multi-Agent Pattern** | **Fan-out/Fan-in** | Parallel search, then merge results | 2026-02-01 |
 | **Chain Pattern** | **Sequential Pipeline** | Writer → Editor → Publisher with SSE | 2026-02-01 |
 | **LangGraph** | **DAG Orchestration** | StateGraph with conditional synthesis | 2026-02-01 |
+| **LangGraph not LangChain** | **Direct Anthropic SDK** | Simpler, explicit, easier debugging | 2026-02-01 |
 
 ---
 
@@ -246,3 +251,13 @@ User -> CallerContext -> Agent.receive_message() -> think() -> act() -> Response
     - [x] 5 Specialist Agents: Research, Estimation, Analysis, Translation, Summary
     - [x] Phase 1 (parallel) → Phase 2 (synthesis)
     - [x] Frontend Step 4: Synthesis visualization
+- **LangGraph Documentation Completion**:
+  - [x] Detailed execution example with real task walkthrough
+  - [x] State-based node communication explained
+  - [x] Agent selection criteria (Analyzer prompt + capability matching)
+  - [x] Registry matching algorithm documented
+  - [x] Parallel execution with asyncio.gather explained
+  - [x] SSE reduced to UI-only note (not orchestration)
+  - [x] "Why LangGraph but not LangChain" architectural decision
+  - [x] Demo video embedded (Cloudinary thumbnail)
+  - [x] README updated with full LangGraph section
