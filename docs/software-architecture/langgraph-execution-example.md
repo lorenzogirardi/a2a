@@ -44,294 +44,325 @@ Questo documento illustra il flusso completo di esecuzione del sistema LangGraph
 
 ---
 
-## Architettura SSE (Server-Sent Events)
+## Comunicazione tra Nodi: Lo State
 
-Il sistema usa **SSE** per inviare aggiornamenti in tempo reale dal backend al frontend, permettendo la visualizzazione live del grafo durante l'esecuzione.
+I nodi LangGraph **non comunicano direttamente tra loro**. Ogni nodo riceve lo stato corrente, lo modifica, e passa lo stato aggiornato al nodo successivo.
 
-### Perché SSE e non WebSocket?
+```python
+# agents/graph/state.py
+class GraphState(TypedDict):
+    # Input iniziale
+    task_id: str
+    original_task: str
 
-| Aspetto | SSE | WebSocket |
-|---------|-----|-----------|
-| Direzione | Unidirezionale (server→client) | Bidirezionale |
-| Complessità | Semplice HTTP | Protocollo separato |
-| Riconnessione | Automatica | Manuale |
-| Formato | Testo (JSON) | Binario o testo |
-| **Uso qui** | ✅ Perfetto (solo push) | Overkill |
+    # Output di ANALYZE → Input di DISCOVER
+    detected_capabilities: Annotated[list[str], operator.add]
+    subtasks: dict[str, str]  # capability → subtask description
+    dependencies: Optional[dict[str, list[str]]]
 
-SSE è ideale per questo caso perché il client non deve mandare dati durante l'esecuzione, solo ricevere aggiornamenti.
+    # Output di DISCOVER → Input di EXECUTE
+    matches: list[dict[str, Any]]  # capability → agent_ids
 
-### Flusso SSE
+    # Output di EXECUTE → Input di SYNTHESIZE
+    executions: Annotated[list[dict[str, Any]], operator.add]
 
-```
-┌─────────────────┐         SSE Stream          ┌─────────────────┐
-│                 │  ─────────────────────────▶ │                 │
-│  FastAPI        │   event: graph_update       │   Browser       │
-│  Backend        │   data: {"node": ...}       │   (vis.js)      │
-│                 │                             │                 │
-│  GraphRunner    │   event: execution_completed│   fetch() +     │
-│                 │   data: {"output": ...}     │   ReadableStream│
-└─────────────────┘                             └─────────────────┘
-     │                                                   │
-     │ async yield                                       │ reader.read()
-     ▼                                                   ▼
-  AsyncGenerator                                    Parse & Update
+    # Output di SYNTHESIZE
+    synthesis: Optional[dict[str, Any]]
+    final_output: str
+    status: str
 ```
 
-### Formato Messaggi SSE
-
-Ogni messaggio SSE segue questo formato:
-```
-event: <tipo_evento>
-data: <json_payload>
+### Flusso dello State
 
 ```
-
-Tipi di evento utilizzati:
-- `execution_started` - Task iniziato
-- `graph_update` - Aggiornamento nodo/arco del grafo
-- `execution_completed` - Task completato con output finale
-- `execution_failed` - Errore durante l'esecuzione
-- `done` - Stream terminato
+┌─────────────┐    state["original_task"]     ┌─────────────┐
+│   ANALYZE   │ ─────────────────────────────▶│  DISCOVER   │
+└─────────────┘    + detected_capabilities    └─────────────┘
+                   + subtasks                        │
+                                                     │ state["matches"]
+                                                     ▼
+┌─────────────┐    state["executions"]        ┌─────────────┐
+│  SYNTHESIZE │ ◀─────────────────────────────│   EXECUTE   │
+└─────────────┘                               └─────────────┘
+       │
+       │ state["final_output"]
+       ▼
+    OUTPUT
+```
 
 ---
 
-## Fase 1: ANALYZE (Analisi del Task)
+## Fase 1: ANALYZE - Selezione delle Capabilities
 
 **Durata**: 4,100ms
 **Nodo**: `analyze`
-**Agente**: AnalyzerAgent (LLM-based)
+**Componente**: AnalyzerAgent (LLM-based)
 
-### Cosa Succede
+### Come l'Analyzer Decide le Capabilities
 
-L'AnalyzerAgent riceve il task in linguaggio naturale e usa Claude per:
+L'Analyzer usa un LLM (Claude) con un prompt strutturato che:
 
-1. **Identificare le capabilities necessarie** (competenze richieste)
-2. **Scomporre il task in subtask** specifici per ogni capability
-3. **Determinare eventuali dipendenze** tra i subtask
+1. **Analizza semanticamente** il task in linguaggio naturale
+2. **Identifica le competenze necessarie** mappandole a capabilities note
+3. **Scompone in subtask** indipendenti per ogni capability
 
-### Input
+```python
+# agents/router/analyzer.py
+ANALYZER_PROMPT = """
+Analizza il seguente task e identifica le capabilities necessarie.
+
+CAPABILITIES DISPONIBILI:
+- analysis: Analisi approfondita, pro/contro, valutazioni
+- estimation: Stime di costi, tempi, quantità
+- research: Ricerca informazioni, dati, riferimenti
+- calculation: Operazioni matematiche
+- translation: Traduzione tra lingue
+- summary: Riassunto di testi lunghi
+
+TASK: {task}
+
+Rispondi in JSON:
+{{
+  "capabilities": ["cap1", "cap2", ...],
+  "subtasks": {{
+    "cap1": "descrizione subtask specifico per cap1",
+    "cap2": "descrizione subtask specifico per cap2"
+  }},
+  "dependencies": null  // o {{"cap2": ["cap1"]}} se cap2 dipende da cap1
+}}
+"""
 ```
-"avendo budget di 30000 dollari al mese, e dovendo costruire
-un piccolo team di ecommerce come andrebbe composto il team tecnico"
-```
 
-### Output dell'Analyzer
+### Criteri di Selezione
+
+| Parole chiave nel task | Capability selezionata |
+|------------------------|------------------------|
+| "analizza", "valuta", "pro e contro" | `analysis` |
+| "quanto costa", "stima", "budget" | `estimation` |
+| "cerca", "informazioni su", "come funziona" | `research` |
+| "calcola", numeri, operazioni | `calculation` |
+| "traduci", lingua specifica | `translation` |
+| "riassumi", "sintetizza" | `summary` |
+
+### Output per questo Task
+
+Il task menziona "budget" (estimation), "team tecnico" (research), e implicitamente richiede valutazione dei ruoli (analysis):
+
 ```json
 {
   "detected_capabilities": ["analysis", "estimation", "research"],
   "subtasks": {
-    "analysis": "Analizza i ruoli tecnici necessari per un team ecommerce
-                e le priorità in base alle esigenze operative",
-    "estimation": "Stima i costi mensili per ciascun ruolo tecnico
-                  considerando il budget di 30000 dollari",
-    "research": "Fornisci informazioni sui ruoli tecnici standard
-                in un team ecommerce e le competenze richieste"
+    "analysis": "Analizza i ruoli tecnici necessari per un team ecommerce e le priorità in base alle esigenze operative",
+    "estimation": "Stima i costi mensili per ciascun ruolo tecnico considerando il budget di 30000 dollari",
+    "research": "Fornisci informazioni sui ruoli tecnici standard in un team ecommerce e le competenze richieste"
   },
   "dependencies": null
 }
 ```
 
-### Eventi SSE Generati
-
-```
-event: graph_update
-data: {"action": "add_node", "node": {"id": "analyze", "label": "Analyzer", "state": "running"}}
-
-event: graph_update
-data: {"action": "update_node", "node": {"id": "analyze", "state": "completed", "duration_ms": 4100}}
-
-event: graph_update
-data: {"action": "add_node", "node": {"id": "cap_analysis", "label": "analysis", "type": "capability"}}
-
-event: graph_update
-data: {"action": "add_node", "node": {"id": "cap_estimation", "label": "estimation", "type": "capability"}}
-
-event: graph_update
-data: {"action": "add_node", "node": {"id": "cap_research", "label": "research", "type": "capability"}}
-```
-
-### Visualizzazione Grafo (dopo Fase 1)
-
-```
-        ┌──────────────┐
-        │   Analyzer   │ ← COMPLETED (verde)
-        │   (4.1s)     │
-        └──────┬───────┘
-               │
-      ┌────────┼────────┐
-      ▼        ▼        ▼
-┌──────────┐ ┌──────────┐ ┌──────────┐
-│ analysis │ │estimation│ │ research │  ← PENDING (grigio)
-└──────────┘ └──────────┘ └──────────┘
-```
-
 ---
 
-## Fase 2: DISCOVER (Scoperta Agenti)
+## Fase 2: DISCOVER - Matching Capability → Agenti
 
 **Durata**: <1ms
 **Nodo**: `discover`
 **Componente**: AgentRegistry
 
-### Cosa Succede
+### Come Funziona il Registry
 
-Il Discovery Node interroga l'AgentRegistry per trovare agenti che possono soddisfare ciascuna capability rilevata:
+Ogni agente, alla registrazione, dichiara le proprie **capabilities**:
 
 ```python
-# Per ogni capability, cerca agenti compatibili
-for capability in ["analysis", "estimation", "research"]:
-    agents = registry.find_by_capability(capability)
+# agents/router/specialist_agents.py
+class ResearchAgent(LLMAgent):
+    def __init__(self, storage):
+        config = AgentConfig(
+            id="researcher",
+            name="Research Agent",
+            description="Ricerca informazioni e dati",
+            capabilities=["research", "search", "info"]  # ← Capabilities dichiarate
+        )
+        super().__init__(config, storage)
+
+class EstimationAgent(LLMAgent):
+    def __init__(self, storage):
+        config = AgentConfig(
+            id="estimator",
+            name="Estimation Agent",
+            capabilities=["estimation", "estimate", "cost", "pricing"]
+        )
+
+class AnalysisAgent(LLMAgent):
+    def __init__(self, storage):
+        config = AgentConfig(
+            id="analyst",
+            name="Analysis Agent",
+            capabilities=["analysis", "analyze", "evaluation"]
+        )
 ```
 
-### Matching Risultato
+### Algoritmo di Matching
 
-| Capability | Agenti Trovati | Match |
-|------------|---------------|-------|
-| `analysis` | `analyst` (Analysis Agent) | ✅ |
-| `estimation` | `estimator` (Estimation Agent) | ✅ |
-| `research` | `researcher` (Research Agent) | ✅ |
+```python
+# agents/graph/nodes.py - discover_node
+def discover_node(state: GraphState, config: RunnableConfig) -> dict:
+    matches = []
 
-### Eventi SSE Generati
+    for capability in state["detected_capabilities"]:
+        # Cerca agenti che dichiarano questa capability
+        agents = registry.find_by_capability(capability)
 
-```
-event: graph_update
-data: {"action": "add_node", "node": {"id": "discover", "label": "Discovery", "state": "running"}}
+        matches.append({
+            "capability": capability,
+            "agent_ids": [a.id for a in agents],
+            "matched": len(agents) > 0
+        })
 
-event: graph_update
-data: {"action": "update_node", "node": {"id": "cap_analysis", "state": "matched", "agents": ["analyst"]}}
-
-event: graph_update
-data: {"action": "add_node", "node": {"id": "agent_analyst", "label": "Analysis Agent", "type": "agent"}}
-
-event: graph_update
-data: {"action": "add_edge", "edge": {"from": "cap_analysis", "to": "agent_analyst"}}
-
-// ... ripetuto per estimation e research ...
-
-event: graph_update
-data: {"action": "update_node", "node": {"id": "discover", "state": "completed"}}
+    return {"matches": matches}
 ```
 
-### Visualizzazione Grafo (dopo Fase 2)
+```python
+# agents/registry.py
+class AgentRegistry:
+    def find_by_capability(self, capability: str) -> list[AgentBase]:
+        """Trova tutti gli agenti che dichiarano una capability."""
+        result = []
+        for agent in self._agents.values():
+            if capability in agent.config.capabilities:
+                result.append(agent)
+        return result
+```
 
+### Risultato del Matching
+
+| Capability richiesta | Agenti nel Registry | Match |
+|---------------------|---------------------|-------|
+| `analysis` | `analyst` (capabilities: ["analysis", "analyze", "evaluation"]) | ✅ |
+| `estimation` | `estimator` (capabilities: ["estimation", "estimate", "cost"]) | ✅ |
+| `research` | `researcher` (capabilities: ["research", "search", "info"]) | ✅ |
+
+### Cosa Succede se Non c'è Match?
+
+```python
+# Se nessun agente matcha una capability:
+{
+    "capability": "translation",
+    "agent_ids": [],
+    "matched": false  # ← Capability non soddisfatta
+}
 ```
-                    ┌──────────────┐
-                    │   Analyzer   │
-                    └──────┬───────┘
-                           │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ analysis │ │estimation│ │ research │  ← MATCHED (blu)
-        └────┬─────┘ └────┬─────┘ └────┬─────┘
-             │            │            │
-             ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ Analyst  │ │Estimator │ │Researcher│  ← PENDING (grigio)
-        │  Agent   │ │  Agent   │ │  Agent   │
-        └──────────┘ └──────────┘ └──────────┘
-                           │
-                    ┌──────────────┐
-                    │   Discovery  │ ← COMPLETED
-                    └──────────────┘
-```
+
+Nell'Execute Node, le capabilities senza match vengono **saltate** (o gestite con fallback).
 
 ---
 
-## Fase 3: EXECUTE (Esecuzione Parallela)
+## Fase 3: EXECUTE - Esecuzione Parallela degli Agenti
 
-**Durata Totale**: ~15,120ms (tempo massimo tra i 3 agenti)
+**Durata Totale**: ~15,120ms
 **Nodo**: `execute`
-**Pattern**: Fan-out parallelo
+**Pattern**: Fan-out parallelo con `asyncio.gather`
 
-### Cosa Succede
-
-Il TaskExecutor lancia **simultaneamente** i 3 agenti specializzati:
+### Meccanismo di Esecuzione
 
 ```python
-# Esecuzione parallela con asyncio.gather
-results = await asyncio.gather(
-    analyst.execute(subtask_analysis),
-    estimator.execute(subtask_estimation),
-    researcher.execute(subtask_research)
-)
+# agents/graph/nodes.py - execute_node
+async def execute_node(state: GraphState, config: RunnableConfig) -> dict:
+    executions = []
+    tasks = []
+
+    for match in state["matches"]:
+        if not match["matched"]:
+            continue  # Skip capabilities senza agenti
+
+        capability = match["capability"]
+        agent_id = match["agent_ids"][0]  # Prende il primo agente disponibile
+        agent = registry.get(agent_id)
+        subtask = state["subtasks"][capability]
+
+        # Crea task async per esecuzione parallela
+        tasks.append(execute_single_agent(agent, subtask, capability))
+
+    # ESECUZIONE PARALLELA: tutti gli agenti partono insieme
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    return {"executions": results}
 ```
 
-### Dettaglio Esecuzioni
-
-#### 1. Analysis Agent
-- **Input**: "Analizza i ruoli tecnici necessari per un team ecommerce e le priorità..."
-- **Durata**: 14,912ms
-- **Token**: 110 input, 1024 output
-- **Output**: Analisi dettagliata dei ruoli (Tier 1, Tier 2, Tier 3) con pro/contro e KPI
-
-#### 2. Estimation Agent
-- **Input**: "Stima i costi mensili per ciascun ruolo tecnico considerando il budget..."
-- **Durata**: 12,280ms
-- **Token**: 155 input, 1024 output
-- **Output**: Tabella costi con distribuzione percentuale del budget
-
-#### 3. Research Agent
-- **Input**: "Fornisci informazioni sui ruoli tecnici standard in un team ecommerce..."
-- **Durata**: 15,120ms
-- **Token**: 124 input, 1024 output
-- **Output**: Lista completa ruoli con competenze tecniche richieste
-
-### Timeline Esecuzione Parallela
+### Perché Parallelo e Non Sequenziale?
 
 ```
-T=0ms      T=12,280ms   T=14,912ms   T=15,120ms
-│          │            │            │
-├──────────┼────────────┼────────────┤
-│  Estimator ──────────▶│            │
-├──────────┼────────────┼────────────┤
-│     Analyst ─────────────────────▶ │
-├──────────┼────────────┼────────────┤
-│    Researcher ───────────────────────▶
-├──────────┼────────────┼────────────┤
+SEQUENZIALE (se fossero dipendenti):
+├── Analyst ────────────────▶ (14.9s)
+│                             ├── Estimator ──────▶ (12.3s)
+│                             │                     ├── Researcher ──▶ (15.1s)
+│                             │                     │
+Totale: 14.9 + 12.3 + 15.1 = 42.3 secondi
 
-Tempo totale: 15,120ms (non 42,312ms se fossero sequenziali!)
+PARALLELO (indipendenti):
+├── Analyst ────────────────▶ (14.9s)
+├── Estimator ──────────────▶ (12.3s)    } Eseguiti contemporaneamente
+├── Researcher ─────────────▶ (15.1s)
+│
+Totale: max(14.9, 12.3, 15.1) = 15.1 secondi
+
 Risparmio: ~64% del tempo
 ```
 
-### Eventi SSE Generati
+### Comunicazione Agente ← → Executor
 
+Ogni agente viene invocato con `receive_message()`:
+
+```python
+async def execute_single_agent(agent, subtask, capability):
+    start = time.time()
+
+    # Chiama l'agente con il subtask
+    response = await agent.receive_message(
+        ctx=agent_context("executor"),
+        content=subtask,
+        sender_id="executor"
+    )
+
+    return {
+        "agent_id": agent.id,
+        "agent_name": agent.name,
+        "capability": capability,
+        "input_text": subtask,
+        "output_text": response.content,
+        "duration_ms": int((time.time() - start) * 1000),
+        "success": True,
+        "tokens": response.metadata.get("tokens", {})
+    }
 ```
-event: graph_update
-data: {"action": "add_node", "node": {"id": "execute", "label": "Executor", "state": "running"}}
 
-// Quando ogni agente completa:
-event: graph_update
-data: {"action": "update_node", "node": {"id": "agent_analyst", "state": "completed", "duration_ms": 14912}}
+### Output delle Esecuzioni
 
-event: graph_update
-data: {"action": "update_node", "node": {"id": "agent_estimator", "state": "completed", "duration_ms": 12280}}
-
-event: graph_update
-data: {"action": "update_node", "node": {"id": "agent_researcher", "state": "completed", "duration_ms": 15120}}
-
-event: graph_update
-data: {"action": "update_node", "node": {"id": "execute", "state": "completed"}}
-```
-
-### Visualizzazione Grafo (dopo Fase 3)
-
-```
-                    ┌──────────────┐
-                    │   Analyzer   │
-                    └──────┬───────┘
-                           │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ analysis │ │estimation│ │ research │
-        └────┬─────┘ └────┬─────┘ └────┬─────┘
-             │            │            │
-             ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ Analyst  │ │Estimator │ │Researcher│  ← COMPLETED (verde)
-        │ (14.9s)  │ │ (12.3s)  │ │ (15.1s)  │
-        └──────────┘ └──────────┘ └──────────┘
+```json
+{
+  "executions": [
+    {
+      "agent_id": "analyst",
+      "capability": "analysis",
+      "output_text": "# Analisi dei Ruoli Tecnici per Team E-commerce\n\n## TIER 1 - PRIORITÀ CRITICA...",
+      "duration_ms": 14912,
+      "success": true
+    },
+    {
+      "agent_id": "estimator",
+      "capability": "estimation",
+      "output_text": "# Stima Costi Mensili per Ruoli Tecnici\n\n| Ruolo | Costo | % Budget |...",
+      "duration_ms": 12280,
+      "success": true
+    },
+    {
+      "agent_id": "researcher",
+      "capability": "research",
+      "output_text": "# Ruoli Tecnici Standard in un Team E-commerce\n\n## 1. Full Stack Developer...",
+      "duration_ms": 15120,
+      "success": true
+    }
+  ]
+}
 ```
 
 ---
@@ -340,20 +371,33 @@ data: {"action": "update_node", "node": {"id": "execute", "state": "completed"}}
 
 **Funzione**: `should_synthesize(state)`
 
-### Logica
+### Logica di Routing
 
 ```python
 def should_synthesize(state: GraphState) -> str:
-    """Decide se sintetizzare o terminare."""
+    """Decide se serve sintesi o se l'output è già pronto."""
     successful = [e for e in state["executions"] if e.get("success")]
 
     if len(successful) > 1:
-        return "synthesize"  # → vai al nodo synthesize
+        # Più agenti hanno risposto → serve integrazione
+        return "synthesize"
+    elif len(successful) == 1:
+        # Un solo agente → usa direttamente il suo output
+        return "end"
     else:
-        return "end"         # → vai direttamente a END
+        # Nessun agente → errore
+        return "end"
 ```
 
-### Risultato in questo caso
+### Scenari Possibili
+
+| Esecuzioni successful | Decisione | Motivo |
+|-----------------------|-----------|--------|
+| 0 | → END | Errore, nessun output |
+| 1 | → END | Output singolo, non serve sintesi |
+| 2+ | → SYNTHESIZE | Serve integrare multiple risposte |
+
+### In questo caso
 
 - Esecuzioni successful: **3** (analyst, estimator, researcher)
 - Condizione `len(successful) > 1`: **True**
@@ -361,142 +405,132 @@ def should_synthesize(state: GraphState) -> str:
 
 ---
 
-## Fase 5: SYNTHESIZE (Sintesi Finale)
+## Fase 5: SYNTHESIZE - Integrazione delle Risposte
 
 **Durata**: 13,000ms
 **Nodo**: `synthesize`
-**Agente**: SynthesizerAgent (LLM-based)
+**Componente**: SynthesizerAgent (LLM-based)
 
-### Cosa Succede
+### Come il Synthesizer Integra le Risposte
 
-Il SynthesizerAgent riceve tutti gli output dei 3 agenti e li integra in una risposta coerente:
+Il Synthesizer riceve **tutti gli output** degli agenti e li combina:
 
 ```python
-synthesis_prompt = f"""
-Integra le seguenti risposte di agenti specializzati in una risposta
-unificata e coerente.
+# agents/router/synthesizer.py
+SYNTHESIS_PROMPT = """
+Sei un esperto nell'integrare informazioni da fonti multiple.
 
-Task originale: {original_task}
+TASK ORIGINALE: {original_task}
 
-RISPOSTA ANALYST:
+RISPOSTE DEGLI AGENTI SPECIALIZZATI:
+
+--- ANALYST ---
 {analyst_output}
 
-RISPOSTA ESTIMATOR:
+--- ESTIMATOR ---
 {estimator_output}
 
-RISPOSTA RESEARCHER:
+--- RESEARCHER ---
 {researcher_output}
 
-Crea una sintesi che:
-1. Combini le informazioni senza ripetizioni
-2. Risolva eventuali contraddizioni
-3. Mantenga la struttura più utile
-4. Fornisca una risposta completa e actionable
+ISTRUZIONI:
+1. Combina le informazioni SENZA ripetizioni
+2. Risolvi eventuali CONTRADDIZIONI (es. cifre diverse)
+3. Usa la STRUTTURA più chiara tra quelle proposte
+4. Produci una risposta COMPLETA e ACTIONABLE
+
+RISPOSTA INTEGRATA:
 """
 ```
 
+### Criteri di Sintesi
+
+| Aspetto | Strategia |
+|---------|-----------|
+| **Dati numerici** | Preferisce Estimator (specialista costi) |
+| **Lista ruoli** | Unisce Researcher + Analyst senza duplicati |
+| **Priorità** | Segue l'ordine di Analyst (valutazione) |
+| **Competenze tecniche** | Prende dettagli da Researcher |
+| **Struttura** | Usa tabelle dove possibile |
+
 ### Output Sintetizzato
 
-Il Synthesizer produce un documento strutturato che:
+```markdown
+# Composizione Team Tecnico E-commerce con Budget $30,000/mese
 
-1. **Unifica** la composizione del team (da Analyst + Estimator)
-2. **Integra** i costi specifici (da Estimator)
-3. **Aggiunge** competenze tecniche dettagliate (da Researcher)
-4. **Organizza** in sezioni logiche (Configurazione, Timeline, KPI)
+## COMPOSIZIONE TEAM RACCOMANDATA
 
-### Eventi SSE Generati
+| Ruolo | Allocazione Budget | Responsabilità |
+|-------|-------------------|----------------|
+| Senior Full-Stack Developer (Lead) | $10,000/mese (33%) | Architettura, sviluppo |
+| Mid-Level Frontend Developer | $6,000/mese (20%) | UI/UX, React/Next.js |
+| Junior Backend Developer | $4,500/mese (15%) | API, database |
+| QA Engineer | $5,000/mese (17%) | Test automation |
+| DevOps Specialist (Part-time) | $4,500/mese (15%) | Cloud, monitoring |
 
-```
-event: graph_update
-data: {"action": "add_node", "node": {"id": "synthesize", "label": "Synthesizer", "state": "running"}}
-
-event: graph_update
-data: {"action": "add_edge", "edge": {"from": "agent_analyst", "to": "synthesize"}}
-
-event: graph_update
-data: {"action": "add_edge", "edge": {"from": "agent_estimator", "to": "synthesize"}}
-
-event: graph_update
-data: {"action": "add_edge", "edge": {"from": "agent_researcher", "to": "synthesize"}}
-
-event: graph_update
-data: {"action": "update_node", "node": {"id": "synthesize", "state": "completed", "duration_ms": 13000}}
-```
-
-### Visualizzazione Grafo Finale
-
-```
-                    ┌──────────────┐
-                    │   Analyzer   │ COMPLETED
-                    └──────┬───────┘
-                           │
-              ┌────────────┼────────────┐
-              ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ analysis │ │estimation│ │ research │
-        └────┬─────┘ └────┬─────┘ └────┬─────┘
-             │            │            │
-             ▼            ▼            ▼
-        ┌──────────┐ ┌──────────┐ ┌──────────┐
-        │ Analyst  │ │Estimator │ │Researcher│ COMPLETED
-        └────┬─────┘ └────┬─────┘ └────┬─────┘
-             │            │            │
-             └────────────┼────────────┘
-                          ▼
-                   ┌─────────────┐
-                   │ Synthesizer │ COMPLETED
-                   │   (13s)     │
-                   └──────┬──────┘
-                          │
-                          ▼
-                   ┌─────────────┐
-                   │   OUTPUT    │
-                   └─────────────┘
+**TOTALE: $30,000/mese**
 ```
 
 ---
 
-## Riepilogo Temporale
-
-| Fase | Nodo | Durata | Note |
-|------|------|--------|------|
-| 1 | Analyze | 4,100ms | LLM decomposition |
-| 2 | Discover | <1ms | Registry lookup |
-| 3 | Execute | 15,120ms | 3 agenti in parallelo |
-| 4 | Condition | <1ms | Routing decision |
-| 5 | Synthesize | 13,000ms | LLM integration |
-| | **TOTALE** | **~59,446ms** | |
-
-### Confronto con Esecuzione Sequenziale
+## Riepilogo del Flusso
 
 ```
-Parallelo:   4.1s + 0s + 15.1s + 0s + 13s = ~32.2s effettivi
-Sequenziale: 4.1s + 0s + (14.9 + 12.3 + 15.1)s + 0s + 13s = ~59.4s
-
-Nota: Il tempo totale include overhead di comunicazione e serializzazione.
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  1. ANALYZE                                                                  │
+│     Input:  "task in linguaggio naturale"                                   │
+│     Output: capabilities[], subtasks{}                                      │
+│     Come:   LLM analizza semanticamente → mappa a capabilities note         │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │ state
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  2. DISCOVER                                                                 │
+│     Input:  capabilities[]                                                  │
+│     Output: matches[] (capability → agent_ids)                              │
+│     Come:   Registry.find_by_capability() per ogni capability               │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │ state
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  3. EXECUTE                                                                  │
+│     Input:  matches[], subtasks{}                                           │
+│     Output: executions[] (agent outputs)                                    │
+│     Come:   asyncio.gather() → agent.receive_message() in parallelo         │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │ state
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  4. CONDITION: should_synthesize(state)                                      │
+│     Se executions.success > 1  →  SYNTHESIZE                                │
+│     Altrimenti                 →  END                                       │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │ state
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  5. SYNTHESIZE                                                               │
+│     Input:  executions[] (tutti gli output)                                 │
+│     Output: final_output (risposta integrata)                               │
+│     Come:   LLM combina, deduplica, risolve contraddizioni                  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Tempi di Esecuzione
+
+| Fase | Durata | Componente | Note |
+|------|--------|------------|------|
+| ANALYZE | 4,100ms | LLM (Claude) | Decomposizione semantica |
+| DISCOVER | <1ms | Registry (in-memory) | Lookup O(n) |
+| EXECUTE | 15,120ms | 3x LLM paralleli | Tempo = max(agenti) |
+| CONDITION | <1ms | Python logic | Semplice if |
+| SYNTHESIZE | 13,000ms | LLM (Claude) | Integrazione |
+| **TOTALE** | **~32,200ms** | | |
 
 ---
 
 ## Struttura del Codice
-
-### State (TypedDict)
-
-```python
-# agents/graph/state.py
-class GraphState(TypedDict):
-    task_id: str
-    original_task: str
-    detected_capabilities: Annotated[list[str], operator.add]
-    subtasks: dict[str, str]
-    dependencies: Optional[dict[str, list[str]]]
-    matches: list[dict[str, Any]]
-    executions: Annotated[list[dict[str, Any]], operator.add]
-    synthesis: Optional[dict[str, Any]]
-    final_output: str
-    status: str
-    graph_data: dict[str, Any]
-```
 
 ### Graph Builder
 
@@ -505,18 +539,18 @@ class GraphState(TypedDict):
 def build_router_graph() -> CompiledStateGraph:
     graph = StateGraph(GraphState)
 
-    # Nodi
+    # Nodi (funzioni async)
     graph.add_node("analyze", analyze_node)
     graph.add_node("discover", discover_node)
     graph.add_node("execute", execute_node)
     graph.add_node("synthesize", synthesize_node)
 
-    # Edges
+    # Edges (flusso)
     graph.add_edge(START, "analyze")
     graph.add_edge("analyze", "discover")
     graph.add_edge("discover", "execute")
 
-    # Conditional edge
+    # Conditional edge (routing dinamico)
     graph.add_conditional_edges(
         "execute",
         should_synthesize,
@@ -528,240 +562,29 @@ def build_router_graph() -> CompiledStateGraph:
     return graph.compile()
 ```
 
-### SSE Backend (FastAPI)
+---
 
-```python
-# protocol/graph_api.py
-@router.post("/stream")
-async def run_and_stream(request: GraphTaskRequest):
-    """Esegue il grafo e streama eventi SSE."""
-    runner = get_graph_runner()
+## Nota: Visualizzazione UI (SSE)
 
-    async def event_generator():
-        # Itera sugli eventi del runner
-        async for event in runner.stream(task=request.task):
-            event_type = event.get("type", "message")
-            data_str = json.dumps(event)
+La visualizzazione del grafo in tempo reale usa **Server-Sent Events (SSE)** per aggiornare la UI nel browser. Questo è **solo per osservabilità** - il sistema funziona identicamente senza UI.
 
-            # Formato SSE: event + data + doppio newline
-            yield f"event: {event_type}\n"
-            yield f"data: {data_str}\n\n"
-
-        # Segnala fine stream
-        yield "event: done\n"
-        yield "data: {\"status\": \"completed\"}\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",  # Content-Type SSE
-        headers={
-            "Cache-Control": "no-cache",      # No caching
-            "Connection": "keep-alive",        # Mantieni connessione
-            "X-Accel-Buffering": "no",        # Disabilita buffering nginx
-        }
-    )
+```
+Backend                              Frontend (opzionale)
+   │                                       │
+   │  emit_event({"node": "running"})      │
+   │  ────────────────────────────────────▶│  vis.js update
+   │                                       │
+   │  (il lavoro vero avviene qui)         │
+   │                                       │
+   │  emit_event({"node": "completed"})    │
+   │  ────────────────────────────────────▶│  vis.js update
 ```
 
-### SSE Runner (Emissione Eventi)
-
-```python
-# agents/graph/runner.py
-async def stream(self, task: str, task_id: str = None):
-    """Esegue il grafo e yield eventi SSE."""
-
-    # Evento iniziale
-    yield {
-        "type": "execution_started",
-        "task": task,
-        "task_id": task_id,
-        "timestamp": datetime.now().isoformat()
-    }
-
-    # Esegue il grafo LangGraph con streaming
-    async for state in self.graph.astream(initial_state):
-        # Per ogni cambio di stato, emetti eventi grafo
-        for event in self._extract_graph_events(state):
-            yield event
-
-    # Evento finale
-    yield {
-        "type": "execution_completed",
-        "status": "completed",
-        "duration_ms": duration,
-        "final_output": state["final_output"]
-    }
-```
-
-### SSE Nodi (Generazione Eventi Grafo)
-
-```python
-# agents/graph/nodes.py
-async def analyze_node(state: GraphState, config: RunnableConfig) -> dict:
-    # Emetti evento: nodo in esecuzione
-    emit_event(config, {
-        "type": "graph_update",
-        "action": "add_node",
-        "node": {"id": "analyze", "label": "Analyzer", "state": "running"}
-    })
-
-    # ... esegui analisi LLM ...
-
-    # Emetti evento: nodo completato
-    emit_event(config, {
-        "type": "graph_update",
-        "action": "update_node",
-        "node": {"id": "analyze", "state": "completed", "duration_ms": 4100}
-    })
-
-    # Emetti nodi capability con archi
-    for cap in capabilities:
-        emit_event(config, {
-            "type": "graph_update",
-            "action": "add_node",
-            "node": {"id": f"cap_{cap}", "label": cap, "type": "capability"}
-        })
-        emit_event(config, {
-            "type": "graph_update",
-            "action": "add_edge",
-            "edge": {"from": "analyze", "to": f"cap_{cap}"}
-        })
-
-    return {"detected_capabilities": capabilities, ...}
-```
-
-### SSE Frontend (JavaScript)
-
-```javascript
-// static/graph/app.js
-async function runGraph() {
-    const response = await fetch('/api/graph/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task })
-    });
-
-    // Leggi lo stream SSE via ReadableStream API
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Parse SSE events dal buffer
-        const lines = buffer.split('\n');
-        buffer = lines.pop();  // Mantieni linea incompleta
-
-        let eventType = 'message';
-        for (const line of lines) {
-            if (line.startsWith('event: ')) {
-                eventType = line.substring(7).trim();
-            } else if (line.startsWith('data: ')) {
-                const data = JSON.parse(line.substring(6));
-
-                // Gestisci evento in base al tipo
-                if (eventType === 'graph_update') {
-                    handleGraphUpdate(data);  // Aggiorna vis.js
-                }
-                if (eventType === 'execution_completed') {
-                    setOutput(data.final_output);
-                }
-                addTimelineEvent(data);  // Aggiorna timeline
-            }
-        }
-    }
-}
-```
-
-### vis.js Update Handler
-
-```javascript
-// static/graph/app.js
-function handleGraphUpdate(event) {
-    if (event.action === 'add_node') {
-        // Aggiungi nodo al grafo vis.js
-        nodes.add({
-            id: event.node.id,
-            label: event.node.label,
-            color: getNodeColor(event.node.state),  // grigio/giallo/verde/rosso
-            shape: getNodeShape(event.node.type)    // diamond/box/dot
-        });
-    }
-    else if (event.action === 'update_node') {
-        // Aggiorna colore nodo esistente (es. running → completed)
-        nodes.update({
-            id: event.node.id,
-            color: getNodeColor(event.node.state)
-        });
-    }
-    else if (event.action === 'add_edge') {
-        // Aggiungi arco tra nodi
-        edges.add({
-            from: event.edge.from,
-            to: event.edge.to
-        });
-    }
-}
-
-function getNodeColor(state) {
-    const colors = {
-        pending: '#475569',    // Grigio
-        running: '#f59e0b',    // Giallo/Arancio
-        completed: '#22c55e',  // Verde
-        failed: '#ef4444',     // Rosso
-        matched: '#3b82f6'     // Blu
-    };
-    return colors[state] || colors.pending;
-}
-```
+SSE è un side-effect per debug/demo, non parte della logica di orchestrazione.
 
 ---
 
-## Output Finale
-
-Il sistema produce una risposta completa e strutturata:
-
-```markdown
-# Composizione Team Tecnico E-commerce con Budget $30,000/mese
-
-## COMPOSIZIONE TEAM RACCOMANDATA
-
-### Configurazione Ottimale (5 persone)
-
-| Ruolo | Allocazione Budget | Responsabilità |
-|-------|-------------------|----------------|
-| Senior Full-Stack Developer (Lead) | $10,000/mese (33%) | Architettura, sviluppo, integrazioni |
-| Mid-Level Frontend Developer | $6,000/mese (20%) | UI/UX, React/Next.js |
-| Junior Backend Developer | $4,500/mese (15%) | API, database |
-| QA Engineer | $5,000/mese (17%) | Test automation, CI/CD |
-| DevOps Specialist (Part-time) | $4,500/mese (15%) | Cloud, monitoring |
-
-**TOTALE: $30,000/mese**
-
-## PRIORITÀ DI ASSUNZIONE
-
-**FASE 1 (Mese 1-2):** Senior Full-Stack + Mid Frontend + QA
-**FASE 2 (Mese 3-6):** Junior Backend + DevOps
-**FASE 3 (dopo 12 mesi):** Product Manager, Data Analyst, UX Designer
-```
-
----
-
-## Conclusioni
-
-Il sistema LangGraph dimostra:
-
-1. **Decomposizione Intelligente**: Un task complesso viene automaticamente scomposto in subtask specializzati
-2. **Discovery Dinamico**: Gli agenti vengono selezionati in base alle capabilities richieste
-3. **Esecuzione Parallela**: Massima efficienza temporale con fan-out pattern
-4. **Sintesi Coerente**: Output multipli vengono integrati in una risposta unificata
-5. **Tracciabilità Completa**: Ogni step è visualizzato in tempo reale nel grafo
-6. **Real-time Streaming**: SSE permette aggiornamenti istantanei senza polling, con riconnessione automatica e basso overhead
-
-### Link Correlati
+## Link Correlati
 
 - [LangGraph Pattern](./langgraph-pattern.md)
 - [Router Pattern](./router-pattern.md)
