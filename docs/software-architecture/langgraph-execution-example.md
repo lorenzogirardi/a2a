@@ -4,6 +4,12 @@
 
 Questo documento illustra il flusso completo di esecuzione del sistema LangGraph, mostrando come una richiesta complessa viene scomposta, distribuita a più agenti specializzati, e infine sintetizzata in una risposta coerente.
 
+## Demo Video
+
+https://res.cloudinary.com/ethzero/video/upload/v1769976053/ai/a2a/agent-discovery-graph.mp4
+
+*Video: Esecuzione in tempo reale del grafo con visualizzazione vis.js*
+
 ---
 
 ## Overview del Sistema
