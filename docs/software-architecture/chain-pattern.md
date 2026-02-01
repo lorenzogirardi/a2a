@@ -1,5 +1,11 @@
 # Chain Pipeline Pattern
 
+## Demo Video
+
+[![Demo Chain Pipeline](https://res.cloudinary.com/ethzero/video/upload/so_3,w_800/v1769977367/ai/a2a/a2a-agent-communication.jpg)](https://res.cloudinary.com/ethzero/video/upload/v1769977367/ai/a2a/a2a-agent-communication.mp4)
+
+*Clicca sull'immagine per vedere il video della comunicazione tra agenti*
+
 ## Overview
 
 The Chain Pipeline pattern demonstrates **sequential agent communication** where each agent transforms its input and passes the result to the next agent in the chain.
