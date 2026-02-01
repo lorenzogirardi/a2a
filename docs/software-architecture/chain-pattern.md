@@ -327,6 +327,109 @@ class TransformResult:
     output_tokens: int = 0         # Output token count
 ```
 
+## Agent Communication Pattern
+
+### How Do Agents Communicate?
+
+In the Chain Pipeline, agents **do not communicate directly** with each other. The `ChainPipeline` acts as a **mediator/orchestrator** that manages all data flow:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                      ChainPipeline                               │
+│                      (Orchestrator)                              │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   current_text = prompt                                          │
+│         │                                                        │
+│         ▼                                                        │
+│   ┌─────────────┐                                                │
+│   │   Writer    │  output = await agent.transform(current_text)  │
+│   └─────────────┘                                                │
+│         │                                                        │
+│   current_text = output  ◄── passes output to next agent         │
+│         │                                                        │
+│         ▼                                                        │
+│   ┌─────────────┐                                                │
+│   │   Editor    │  output = await agent.transform(current_text)  │
+│   └─────────────┘                                                │
+│         │                                                        │
+│   current_text = output                                          │
+│         │                                                        │
+│         ▼                                                        │
+│   ┌─────────────┐                                                │
+│   │  Publisher  │  output = await agent.transform(current_text)  │
+│   └─────────────┘                                                │
+│         │                                                        │
+│         ▼                                                        │
+│   return final_output                                            │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Key Code (pipeline.py)
+
+```python
+async def run(self, input_data: PipelineInput) -> PipelineResult:
+    current_text = input_data.prompt
+
+    for index, agent in enumerate(self.agents):
+        # Execute the step
+        transform_result = await agent.transform_with_metadata(current_text)
+        output_text = transform_result.text
+
+        # Emit SSE event for UI
+        self._emit_event("message_passed", {
+            "from_step": agent.step_name,
+            "to_step": self.agents[index + 1].step_name,
+            "content": output_text
+        })
+
+        # Pass output to next step
+        current_text = output_text  # ← This is the "communication"
+
+    return PipelineResult(final_output=current_text, ...)
+```
+
+### Design Pattern: Mediator
+
+| Aspect | Description |
+|--------|-------------|
+| **Pattern** | Mediator / Orchestrator |
+| **Coupling** | Agents are **decoupled** - they don't know each other |
+| **Flow Control** | Pipeline controls execution order |
+| **Communication** | Indirect via `current_text` variable |
+| **Advantages** | Easy to add/remove/reorder agents |
+
+### Why This Pattern?
+
+1. **Decoupling**: Agents have no dependencies on each other
+2. **Testability**: Each agent can be tested in isolation
+3. **Flexibility**: Easy to add, remove, or reorder steps
+4. **Observability**: Pipeline can emit events at each transition
+5. **Error Handling**: Centralized error management
+
+### Alternative: Direct Agent Communication
+
+The A2A framework also supports **peer-to-peer** communication via `send_to_agent()`:
+
+```python
+# Direct agent-to-agent communication (not used in Chain Pipeline)
+class AgentA(AgentBase):
+    async def think(self, message):
+        # AgentA directly calls AgentB
+        response = await self.send_to_agent(agent_b, "help me with this")
+        return {"response": response.content}
+```
+
+| Pattern | Use Case |
+|---------|----------|
+| **Mediator** (Chain) | Sequential processing, clear flow |
+| **Peer-to-Peer** | Dynamic collaboration, complex workflows |
+
+The Chain Pipeline uses the **Mediator pattern** because it provides clear visibility into the document transformation process.
+
+---
+
 ## SSE Events
 
 The pipeline broadcasts events via Server-Sent Events for real-time visualization:
