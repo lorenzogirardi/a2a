@@ -6,9 +6,11 @@ Questo documento illustra il flusso completo di esecuzione del sistema LangGraph
 
 ## Demo Video
 
-https://res.cloudinary.com/ethzero/video/upload/v1769976053/ai/a2a/agent-discovery-graph.mp4
+<video src="https://res.cloudinary.com/ethzero/video/upload/v1769976053/ai/a2a/agent-discovery-graph.mp4" controls width="100%">
+  Il tuo browser non supporta il tag video.
+</video>
 
-*Video: Esecuzione in tempo reale del grafo con visualizzazione vis.js*
+*Esecuzione in tempo reale del grafo con visualizzazione vis.js*
 
 ---
 
