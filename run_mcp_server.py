@@ -1,47 +1,31 @@
 """
-Run MCP Server - Avvia il server MCP per esporre gli agenti.
+Run MCP Server - Avvia il server FastMCP per esporre gli agenti.
 
 Uso:
-    python run_mcp_server.py
-
-Il server sara' accessibile tramite stdio (per Claude Desktop)
-o puo' essere esteso per SSE/HTTP.
+    python run_mcp_server.py          # Avvia MCP server (stdio)
+    python run_mcp_server.py --api    # Avvia FastAPI server (HTTP)
 """
 
-import asyncio
-
-from storage import MemoryStorage
-from agents import EchoAgent, CounterAgent, CalculatorAgent, RouterAgent
-from protocol import AgentMCPServer
+import sys
 
 
-async def main():
-    """Avvia il server MCP con gli agenti configurati."""
+def main():
+    if "--api" in sys.argv:
+        # Avvia FastAPI
+        import uvicorn
+        from protocol.api import app
 
-    # Storage condiviso
-    storage = MemoryStorage()
+        print("[API] Avvio server FastAPI su http://localhost:8000")
+        print("[API] Docs disponibili su http://localhost:8000/docs")
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    else:
+        # Avvia MCP (default)
+        from protocol.mcp_server import mcp, setup_default_agents
 
-    # Crea gli agenti
-    echo = EchoAgent("echo", storage)
-    counter = CounterAgent("counter", storage)
-    calculator = CalculatorAgent("calculator", storage)
-
-    # Router che smista ai vari agenti
-    router = RouterAgent("router", storage)
-    router.add_route("calcola", calculator)
-    router.add_route("ripeti", echo)
-    router.add_route("conta", counter)
-
-    # Crea e configura il server MCP
-    server = AgentMCPServer(storage)
-    server.register_agent(echo)
-    server.register_agent(counter)
-    server.register_agent(calculator)
-    server.register_agent(router)
-
-    # Avvia
-    await server.run()
+        setup_default_agents()
+        print("[MCP] Avvio server MCP (stdio mode)")
+        mcp.run()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

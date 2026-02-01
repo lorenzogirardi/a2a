@@ -25,17 +25,17 @@
 ---
 
 ## In Progress
-- [ ] Refactor protocol/ to use FastMCP + FastAPI
+- [x] Refactor protocol/ to use FastMCP + FastAPI (DONE)
 
 ---
 
 ## Next Steps
 
-### Priority 1 (Immediate)
-1. Refactor `protocol/mcp_server.py` to use FastMCP decorators
-2. Create `protocol/api.py` with FastAPI endpoints
-3. Create initial tests for agents
-4. Test both MCP and REST interfaces
+### Priority 1 (Immediate) - COMPLETED
+1. ~~Refactor `protocol/mcp_server.py` to use FastMCP decorators~~ ✓
+2. ~~Create `protocol/api.py` with FastAPI endpoints~~ ✓
+3. ~~Create initial tests for agents~~ ✓
+4. ~~Test both MCP and REST interfaces~~ ✓
 
 ### Priority 2 (Short-term)
 1. Add file-based storage (FileStorage)
@@ -110,3 +110,14 @@ User -> CallerContext -> Agent.receive_message() -> think() -> act() -> Response
   - Created security skill
 - Created **README.md** with project overview
 - Pushed to GitHub: https://github.com/lorenzogirardi/a2a
+- **Priority 1 COMPLETED**:
+  - Refactored mcp_server.py to FastMCP (@mcp.tool decorators)
+  - Created api.py with FastAPI REST endpoints
+  - Created test pyramid:
+    - tests/unit/test_agents.py
+    - tests/unit/test_storage.py
+    - tests/unit/test_permissions.py
+    - tests/integration/test_agent_communication.py
+    - tests/e2e/test_fastapi.py
+  - Added pyproject.toml with pytest config
+  - Fixed security workflow (semgrep container, trufflehog first push)

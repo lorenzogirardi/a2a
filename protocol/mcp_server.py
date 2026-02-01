@@ -1,203 +1,232 @@
 """
-MCP Server - Espone gli agenti tramite Model Context Protocol.
+FastMCP Server - Espone gli agenti tramite Model Context Protocol.
 
-CONCETTO: MCP è il protocollo di Anthropic per connettere LLM a tools e dati.
-Qui lo usiamo per:
-1. Esporre i nostri agenti come "tools" che Claude può chiamare
-2. Permettere a client esterni di interagire con gli agenti
-3. Standardizzare la comunicazione
-
-MCP usa JSON-RPC 2.0 su stdio o SSE.
+Usa FastMCP per una API più semplice basata su decoratori.
 """
 
-from typing import Any
 import json
-
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from typing import Optional
+from fastmcp import FastMCP
 
 from agents.base import AgentBase
 from storage.base import StorageBase
-from auth.permissions import CallerContext, Role, user_context
+from storage.memory import MemoryStorage
+from auth.permissions import CallerContext, Role, user_context, admin_context
+
+# Registry globale degli agenti (condiviso con FastAPI)
+_storage: Optional[StorageBase] = None
+_agents: dict[str, AgentBase] = {}
 
 
-class AgentMCPServer:
+def get_storage() -> StorageBase:
+    """Ritorna lo storage condiviso."""
+    global _storage
+    if _storage is None:
+        _storage = MemoryStorage()
+    return _storage
+
+
+def get_agents() -> dict[str, AgentBase]:
+    """Ritorna il registry degli agenti."""
+    return _agents
+
+
+def register_agent(agent: AgentBase) -> None:
+    """Registra un agente nel registry globale."""
+    _agents[agent.id] = agent
+    print(f"[MCP] Registrato agente: {agent.id}")
+
+
+def set_storage(storage: StorageBase) -> None:
+    """Imposta lo storage globale."""
+    global _storage
+    _storage = storage
+
+
+# Crea il server FastMCP
+mcp = FastMCP("a2a-agents")
+
+
+@mcp.tool()
+def list_agents() -> str:
+    """Lista tutti gli agenti disponibili con le loro capacità."""
+    agents = get_agents()
+    result = {
+        agent_id: {
+            "name": agent.name,
+            "description": agent.config.description,
+            "capabilities": agent.config.capabilities
+        }
+        for agent_id, agent in agents.items()
+    }
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def send_message(
+    agent_id: str,
+    message: str,
+    caller_id: str = "mcp_user",
+    caller_role: str = "user",
+    conversation_id: Optional[str] = None
+) -> str:
     """
-    Server MCP che espone gli agenti registrati.
+    Invia un messaggio a un agente specifico.
 
-    Ogni agente diventa un tool che può essere chiamato.
+    Args:
+        agent_id: ID dell'agente destinatario
+        message: Il messaggio da inviare
+        caller_id: ID di chi sta chiamando
+        caller_role: Ruolo del caller (admin, user, guest)
+        conversation_id: ID conversazione (opzionale)
     """
+    agents = get_agents()
 
-    def __init__(self, storage: StorageBase):
-        self.storage = storage
-        self.agents: dict[str, AgentBase] = {}
-        self.server = Server("agent-server")
+    if agent_id not in agents:
+        return json.dumps({
+            "error": "agent_not_found",
+            "message": f"Agente '{agent_id}' non trovato",
+            "available_agents": list(agents.keys())
+        })
 
-        self._setup_handlers()
+    agent = agents[agent_id]
 
-    def register_agent(self, agent: AgentBase) -> None:
-        """Registra un agente nel server."""
-        self.agents[agent.id] = agent
-        print(f"[MCP] Registrato agente: {agent.id}")
+    # Costruisci il contesto
+    role_map = {
+        "admin": Role.ADMIN,
+        "user": Role.USER,
+        "guest": Role.GUEST
+    }
 
-    def _setup_handlers(self) -> None:
-        """Configura gli handler MCP."""
+    ctx = CallerContext(
+        caller_id=caller_id,
+        role=role_map.get(caller_role, Role.USER),
+        metadata={"source": "mcp"}
+    )
 
-        @self.server.list_tools()
-        async def list_tools() -> list[Tool]:
-            """Ritorna la lista di tools (agenti) disponibili."""
-            tools = []
+    try:
+        response = await agent.receive_message(
+            ctx=ctx,
+            content=message,
+            sender_id=caller_id,
+            conversation_id=conversation_id
+        )
 
-            for agent_id, agent in self.agents.items():
-                tools.append(Tool(
-                    name=f"agent_{agent_id}",
-                    description=f"{agent.name}: {agent.config.description}",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "message": {
-                                "type": "string",
-                                "description": "Il messaggio da inviare all'agente"
-                            },
-                            "conversation_id": {
-                                "type": "string",
-                                "description": "ID della conversazione (opzionale)"
-                            },
-                            "caller_id": {
-                                "type": "string",
-                                "description": "ID di chi sta chiamando"
-                            },
-                            "caller_role": {
-                                "type": "string",
-                                "enum": ["admin", "user", "guest"],
-                                "description": "Ruolo del caller (default: user)"
-                            }
-                        },
-                        "required": ["message"]
-                    }
-                ))
+        return json.dumps({
+            "agent": agent_id,
+            "response": response.content,
+            "timestamp": response.timestamp.isoformat(),
+            "metadata": response.metadata
+        }, indent=2)
 
-            # Tool per listare le conversazioni
-            tools.append(Tool(
-                name="list_conversations",
-                description="Mostra tutte le conversazioni attive",
-                inputSchema={
-                    "type": "object",
-                    "properties": {}
-                }
-            ))
+    except Exception as e:
+        return json.dumps({
+            "error": "agent_error",
+            "message": str(e),
+            "agent": agent_id
+        })
 
-            # Tool per vedere lo stato di un agente
-            tools.append(Tool(
-                name="get_agent_state",
-                description="Recupera lo stato interno di un agente",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "agent_id": {
-                            "type": "string",
-                            "description": "ID dell'agente"
-                        }
-                    },
-                    "required": ["agent_id"]
-                }
-            ))
 
-            return tools
+@mcp.tool()
+async def get_agent_state(agent_id: str) -> str:
+    """
+    Recupera lo stato interno di un agente.
 
-        @self.server.call_tool()
-        async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-            """Gestisce le chiamate ai tools."""
+    Args:
+        agent_id: ID dell'agente
+    """
+    agents = get_agents()
 
-            # Tool per conversazioni
-            if name == "list_conversations":
-                from storage.memory import MemoryStorage
-                if isinstance(self.storage, MemoryStorage):
-                    convs = self.storage.get_all_conversations()
-                    result = {
-                        conv_id: {
-                            "participants": conv.participants,
-                            "message_count": len(conv.messages)
-                        }
-                        for conv_id, conv in convs.items()
-                    }
-                    return [TextContent(
-                        type="text",
-                        text=json.dumps(result, indent=2, default=str)
-                    )]
-                return [TextContent(type="text", text="Storage non supporta questa operazione")]
+    if agent_id not in agents:
+        return json.dumps({
+            "error": "agent_not_found",
+            "message": f"Agente '{agent_id}' non trovato"
+        })
 
-            # Tool per stato agente
-            if name == "get_agent_state":
-                agent_id = arguments.get("agent_id")
-                if agent_id not in self.agents:
-                    return [TextContent(type="text", text=f"Agente '{agent_id}' non trovato")]
+    ctx = user_context("mcp_client")
+    state = await agents[agent_id].get_state(ctx)
 
-                ctx = user_context("mcp_client")
-                state = await self.agents[agent_id].get_state(ctx)
-                return [TextContent(
-                    type="text",
-                    text=json.dumps(state, indent=2, default=str)
-                )]
+    return json.dumps(state, indent=2, default=str)
 
-            # Chiamata a un agente
-            if name.startswith("agent_"):
-                agent_id = name[6:]  # Rimuove "agent_"
 
-                if agent_id not in self.agents:
-                    return [TextContent(type="text", text=f"Agente '{agent_id}' non trovato")]
+@mcp.tool()
+def list_conversations() -> str:
+    """Mostra tutte le conversazioni attive."""
+    storage = get_storage()
 
-                agent = self.agents[agent_id]
+    if isinstance(storage, MemoryStorage):
+        convs = storage.get_all_conversations()
+        result = {
+            conv_id: {
+                "participants": conv.participants,
+                "message_count": len(conv.messages),
+                "created_at": conv.created_at.isoformat()
+            }
+            for conv_id, conv in convs.items()
+        }
+        return json.dumps(result, indent=2)
 
-                # Costruisci il contesto dal caller
-                caller_id = arguments.get("caller_id", "mcp_anonymous")
-                caller_role = arguments.get("caller_role", "user")
+    return json.dumps({"error": "Storage non supporta questa operazione"})
 
-                role_map = {
-                    "admin": Role.ADMIN,
-                    "user": Role.USER,
-                    "guest": Role.GUEST
-                }
 
-                ctx = CallerContext(
-                    caller_id=caller_id,
-                    role=role_map.get(caller_role, Role.USER),
-                    metadata={"source": "mcp"}
-                )
+@mcp.tool()
+async def get_conversation_messages(conversation_id: str) -> str:
+    """
+    Recupera i messaggi di una conversazione.
 
-                # Invia il messaggio
-                try:
-                    response = await agent.receive_message(
-                        ctx=ctx,
-                        content=arguments["message"],
-                        sender_id=caller_id,
-                        conversation_id=arguments.get("conversation_id")
-                    )
+    Args:
+        conversation_id: ID della conversazione
+    """
+    storage = get_storage()
+    messages = await storage.get_messages(conversation_id)
 
-                    return [TextContent(
-                        type="text",
-                        text=json.dumps({
-                            "agent": agent_id,
-                            "response": response.content,
-                            "timestamp": response.timestamp.isoformat(),
-                            "metadata": response.metadata
-                        }, indent=2)
-                    )]
+    result = [
+        {
+            "id": msg.id,
+            "sender": msg.sender,
+            "receiver": msg.receiver,
+            "content": msg.content,
+            "timestamp": msg.timestamp.isoformat()
+        }
+        for msg in messages
+    ]
 
-                except Exception as e:
-                    return [TextContent(type="text", text=f"Errore: {str(e)}")]
+    return json.dumps(result, indent=2)
 
-            return [TextContent(type="text", text=f"Tool '{name}' non riconosciuto")]
 
-    async def run(self) -> None:
-        """Avvia il server MCP su stdio."""
-        print("[MCP] Server in avvio...")
-        print(f"[MCP] Agenti disponibili: {list(self.agents.keys())}")
+@mcp.resource("agents://list")
+def resource_agents_list() -> str:
+    """Lista degli agenti come risorsa."""
+    return list_agents()
 
-        async with stdio_server() as (read_stream, write_stream):
-            await self.server.run(
-                read_stream,
-                write_stream,
-                self.server.create_initialization_options()
-            )
+
+@mcp.resource("agents://{agent_id}/state")
+async def resource_agent_state(agent_id: str) -> str:
+    """Stato di un agente come risorsa."""
+    return await get_agent_state(agent_id)
+
+
+def setup_default_agents() -> None:
+    """Setup degli agenti di default per testing."""
+    from agents import EchoAgent, CounterAgent, CalculatorAgent, RouterAgent
+
+    storage = get_storage()
+
+    echo = EchoAgent("echo", storage)
+    counter = CounterAgent("counter", storage)
+    calculator = CalculatorAgent("calculator", storage)
+
+    router = RouterAgent("router", storage)
+    router.add_route("calcola", calculator)
+    router.add_route("ripeti", echo)
+    router.add_route("conta", counter)
+
+    register_agent(echo)
+    register_agent(counter)
+    register_agent(calculator)
+    register_agent(router)
+
+
+if __name__ == "__main__":
+    setup_default_agents()
+    mcp.run()
