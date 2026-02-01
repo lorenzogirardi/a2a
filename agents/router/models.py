@@ -55,6 +55,14 @@ class AnalysisResult(BaseModel):
     duration_ms: int = 0
 
 
+class SynthesisResult(BaseModel):
+    """Result from synthesizing multiple execution outputs."""
+    synthesized_output: str = ""
+    duration_ms: int = 0
+    sources: list[str] = Field(default_factory=list)  # agent IDs that contributed
+    tokens: dict = Field(default_factory=lambda: {"input": 0, "output": 0})
+
+
 class RouterResult(BaseModel):
     """Complete result from routing a task."""
     task_id: str
@@ -62,15 +70,20 @@ class RouterResult(BaseModel):
     analysis: AnalysisResult
     matches: list[CapabilityMatch] = Field(default_factory=list)
     executions: list[ExecutionResult] = Field(default_factory=list)
+    synthesis: Optional[SynthesisResult] = None  # Phase 2 synthesis
     final_output: str = ""
     total_duration_ms: int = 0
-    status: str = "pending"  # pending, analyzing, discovering, executing, completed, failed
+    status: str = "pending"  # pending, analyzing, discovering, executing, synthesizing, completed, failed
     error: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
     @property
     def total_tokens(self) -> dict:
-        """Sum of all token usage."""
+        """Sum of all token usage including synthesis."""
         total_input = sum(e.tokens.get("input", 0) for e in self.executions)
         total_output = sum(e.tokens.get("output", 0) for e in self.executions)
+        # Add synthesis tokens if present
+        if self.synthesis:
+            total_input += self.synthesis.tokens.get("input", 0)
+            total_output += self.synthesis.tokens.get("output", 0)
         return {"input": total_input, "output": total_output, "total": total_input + total_output}

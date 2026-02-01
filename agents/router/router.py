@@ -17,8 +17,10 @@ from .models import (
     TaskInput,
     RouterResult,
     CapabilityMatch,
-    AnalysisResult
+    AnalysisResult,
+    SynthesisResult
 )
+from .synthesizer import SynthesizerAgent
 
 
 class SmartRouter:
@@ -52,9 +54,10 @@ class SmartRouter:
         self.storage = storage
         self.event_handler = event_handler
 
-        # Create analyzer and executor
+        # Create analyzer, executor, and synthesizer
         self.analyzer = AnalyzerAgent(storage=storage, model=model)
         self.executor = TaskExecutor(registry=registry, event_handler=event_handler)
+        self.synthesizer = SynthesizerAgent(storage=storage, model=model)
 
     def _emit_event(self, event_type: str, data: dict) -> None:
         """Emit an SSE event if handler is configured."""
@@ -168,14 +171,39 @@ class SmartRouter:
             )
             result.executions = executions
 
-            # Step 4: Aggregate results
+            # Step 4: Synthesize results (Phase 2)
             successful = [e for e in executions if e.success]
             if successful:
-                # Combine outputs
-                outputs = []
-                for exec_result in successful:
-                    outputs.append(f"**{exec_result.capability}** ({exec_result.agent_name}):\n{exec_result.output_text}")
-                result.final_output = "\n\n---\n\n".join(outputs)
+                # If multiple successful executions, synthesize them
+                if len(successful) > 1:
+                    result.status = "synthesizing"
+                    self._emit_event("synthesis_started", {
+                        "task_id": task_id,
+                        "sources": [e.agent_id for e in successful]
+                    })
+
+                    synthesis_result = await self.synthesizer.synthesize(
+                        original_task=task,
+                        executions=successful,
+                        task_id=task_id
+                    )
+
+                    result.synthesis = SynthesisResult(
+                        synthesized_output=synthesis_result["synthesized_output"],
+                        duration_ms=synthesis_result["duration_ms"],
+                        sources=synthesis_result["sources"],
+                        tokens=synthesis_result["tokens"]
+                    )
+                    result.final_output = synthesis_result["synthesized_output"]
+
+                    self._emit_event("synthesis_completed", {
+                        "task_id": task_id,
+                        "duration_ms": synthesis_result["duration_ms"],
+                        "sources": synthesis_result["sources"]
+                    })
+                else:
+                    # Single execution, use directly
+                    result.final_output = successful[0].output_text
             else:
                 result.final_output = "All executions failed."
 

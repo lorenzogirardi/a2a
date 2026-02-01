@@ -499,8 +499,47 @@ section h2 {
 .timeline-event.analysis { border-left-color: var(--secondary-color); }
 .timeline-event.discovery { border-left-color: var(--primary-color); }
 .timeline-event.execution { border-left-color: var(--warning-color); }
+.timeline-event.synthesis { border-left-color: var(--secondary-color); }
 .timeline-event.completed { border-left-color: var(--success-color); }
 .timeline-event.error { border-left-color: var(--error-color); }
+
+/* Synthesis Section */
+.synthesis-info {
+    padding: 0.5rem;
+}
+
+.synthesis-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.synthesis-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem;
+    background: var(--surface);
+    border-radius: 4px;
+}
+
+.stat-label {
+    color: var(--text-secondary);
+}
+
+.stat-value {
+    color: var(--secondary-color);
+    font-weight: 600;
+}
+
+.synthesis-badge {
+    background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    text-align: center;
+}
 
 .event-time {
     color: var(--text-secondary);

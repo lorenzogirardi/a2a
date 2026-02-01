@@ -44,7 +44,7 @@ def _register_default_agents(registry: AgentRegistry) -> None:
 
     storage = MemoryStorage()
 
-    # Register agents with capabilities
+    # Register simple agents
     echo = EchoAgent("echo", storage)
     echo.config.capabilities = ["echo"]
     registry.register(echo)
@@ -53,7 +53,7 @@ def _register_default_agents(registry: AgentRegistry) -> None:
     calc.config.capabilities = ["calculation"]
     registry.register(calc)
 
-    # Register chain agents if available
+    # Register chain agents
     try:
         from agents.chain import WriterAgent, EditorAgent, PublisherAgent
         chain_storage = MemoryStorage()
@@ -71,6 +71,34 @@ def _register_default_agents(registry: AgentRegistry) -> None:
         registry.register(publisher)
     except ImportError:
         pass
+
+    # Register specialist agents
+    try:
+        from agents.router.specialist_agents import (
+            ResearchAgent,
+            EstimationAgent,
+            AnalysisAgent,
+            TranslationAgent,
+            SummaryAgent
+        )
+        specialist_storage = MemoryStorage()
+
+        researcher = ResearchAgent(specialist_storage)
+        registry.register(researcher)
+
+        estimator = EstimationAgent(specialist_storage)
+        registry.register(estimator)
+
+        analyst = AnalysisAgent(specialist_storage)
+        registry.register(analyst)
+
+        translator = TranslationAgent(specialist_storage)
+        registry.register(translator)
+
+        summarizer = SummaryAgent(specialist_storage)
+        registry.register(summarizer)
+    except ImportError as e:
+        print(f"Failed to register specialist agents: {e}")
 
 
 def get_router() -> SmartRouter:

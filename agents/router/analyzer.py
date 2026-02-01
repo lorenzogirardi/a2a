@@ -21,6 +21,11 @@ AVAILABLE_CAPABILITIES = [
     ("creative_writing", "scrittura creativa, poesie, storie, haiku"),
     ("text_editing", "modifica, correzione e miglioramento testi"),
     ("formatting", "formattazione documenti, markdown, struttura"),
+    ("research", "ricerca informazioni, domande di conoscenza, fatti"),
+    ("estimation", "stime di costi, quantità, dimensioni, valutazioni"),
+    ("analysis", "analisi problemi complessi, ragionamento, pro/contro"),
+    ("translation", "traduzione tra lingue diverse"),
+    ("summarization", "riassunti, sintesi di testi o concetti"),
 ]
 
 

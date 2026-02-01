@@ -10,9 +10,11 @@ from .models import (
     CapabilityMatch,
     ExecutionResult,
     AnalysisResult,
+    SynthesisResult,
     RouterResult
 )
 from .analyzer import AnalyzerAgent, AVAILABLE_CAPABILITIES
+from .synthesizer import SynthesizerAgent
 from .executor import TaskExecutor
 from .router import SmartRouter
 
@@ -22,9 +24,11 @@ __all__ = [
     "CapabilityMatch",
     "ExecutionResult",
     "AnalysisResult",
+    "SynthesisResult",
     "RouterResult",
     # Agents
     "AnalyzerAgent",
+    "SynthesizerAgent",
     "AVAILABLE_CAPABILITIES",
     # Components
     "TaskExecutor",

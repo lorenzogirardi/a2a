@@ -14,6 +14,7 @@ const timeline = document.getElementById('timeline');
 const stepAnalyze = document.getElementById('step-analyze');
 const stepDiscover = document.getElementById('step-discover');
 const stepExecute = document.getElementById('step-execute');
+const stepSynthesize = document.getElementById('step-synthesize');
 
 // Step content
 const detectedCapabilities = document.getElementById('detected-capabilities');
@@ -32,6 +33,10 @@ const metricCapabilities = document.getElementById('metric-capabilities');
 const analyzeStatus = document.getElementById('analyze-status');
 const discoverStatus = document.getElementById('discover-status');
 const executeStatus = document.getElementById('execute-status');
+const synthesizeStatus = document.getElementById('synthesize-status');
+
+// Synthesis info
+const synthesisInfo = document.getElementById('synthesis-info');
 
 // State
 let currentTaskId = null;
@@ -205,9 +210,27 @@ function connectToSSE(taskId) {
         addTimelineEvent('execution', `${data.agent_id}: ${data.success ? 'completed' : 'failed'}`);
     });
 
-    eventSource.addEventListener('routing_completed', (e) => {
+    eventSource.addEventListener('synthesis_started', (e) => {
         const data = JSON.parse(e.data);
         setStepCompleted('execute');
+        setStepActive('synthesize');
+        synthesizeStatus.textContent = 'Synthesizing...';
+        addTimelineEvent('synthesis', `Synthesizing outputs from ${data.sources.length} agents...`);
+    });
+
+    eventSource.addEventListener('synthesis_completed', (e) => {
+        const data = JSON.parse(e.data);
+        setStepCompleted('synthesize');
+        displaySynthesisInfo(data);
+        addTimelineEvent('synthesis', `Synthesis completed in ${data.duration_ms}ms`);
+    });
+
+    eventSource.addEventListener('routing_completed', (e) => {
+        const data = JSON.parse(e.data);
+        // Mark appropriate step as completed
+        if (!stepSynthesize.classList.contains('completed')) {
+            setStepCompleted('execute');
+        }
 
         metricDuration.textContent = `${(data.total_duration_ms / 1000).toFixed(2)}s`;
         metricAgents.textContent = data.executions_count || 0;
@@ -238,7 +261,7 @@ function connectToSSE(taskId) {
  */
 function resetUI() {
     // Reset steps
-    [stepAnalyze, stepDiscover, stepExecute].forEach(step => {
+    [stepAnalyze, stepDiscover, stepExecute, stepSynthesize].forEach(step => {
         step.classList.remove('active', 'completed');
     });
 
@@ -246,12 +269,14 @@ function resetUI() {
     analyzeStatus.textContent = 'Waiting';
     discoverStatus.textContent = 'Waiting';
     executeStatus.textContent = 'Waiting';
+    synthesizeStatus.textContent = 'Waiting';
 
     // Reset content
     detectedCapabilities.innerHTML = '<div class="placeholder">Capabilities will appear here...</div>';
     subtasksList.innerHTML = '';
     discoveryResults.innerHTML = '<div class="placeholder">Agent matches will appear here...</div>';
     executionResults.innerHTML = '<div class="placeholder">Execution results will appear here...</div>';
+    synthesisInfo.innerHTML = '<div class="placeholder">Synthesis will appear when multiple agents are used...</div>';
     finalOutput.innerHTML = '<div class="placeholder">Results will appear here...</div>';
     timeline.innerHTML = '';
 
@@ -404,6 +429,24 @@ function addExecutionResult(data) {
 }
 
 /**
+ * Display synthesis info
+ */
+function displaySynthesisInfo(data) {
+    synthesisInfo.innerHTML = `
+        <div class="synthesis-details">
+            <div class="synthesis-stat">
+                <span class="stat-label">Sources:</span>
+                <span class="stat-value">${data.sources.join(', ')}</span>
+            </div>
+            <div class="synthesis-stat">
+                <span class="stat-label">Duration:</span>
+                <span class="stat-value">${data.duration_ms}ms</span>
+            </div>
+        </div>
+    `;
+}
+
+/**
  * Display final output
  */
 function displayFinalOutput(result) {
@@ -412,7 +455,17 @@ function displayFinalOutput(result) {
         return;
     }
 
-    finalOutput.innerHTML = formatOutput(result.final_output);
+    // Show if synthesis was used
+    if (result.synthesis) {
+        const badge = document.createElement('div');
+        badge.className = 'synthesis-badge';
+        badge.innerHTML = '🔗 Synthesized from multiple agents';
+        finalOutput.innerHTML = '';
+        finalOutput.appendChild(badge);
+        finalOutput.innerHTML += formatOutput(result.final_output);
+    } else {
+        finalOutput.innerHTML = formatOutput(result.final_output);
+    }
 }
 
 /**
