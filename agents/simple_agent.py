@@ -161,7 +161,7 @@ class CalculatorAgent(AgentBase):
             id=agent_id,
             name=f"Calculator Agent ({agent_id})",
             description="Esegue calcoli matematici",
-            capabilities=["calculate", "math"]
+            capabilities=["calculate", "math", "calculation"]
         )
         super().__init__(config, storage)
 

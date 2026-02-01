@@ -66,6 +66,16 @@
   - [x] Live visualization webpage (static/chain/)
   - [x] Unit tests (21), Integration tests (8), E2E tests (8)
   - [x] Documentation: docs/software-architecture/chain-pattern.md
+- [x] **LangGraph Integration** (Use Case #4)
+  - [x] LangGraph StateGraph with DAG-based execution
+  - [x] 4 nodes: analyze, discover, execute, synthesize
+  - [x] Conditional edges for synthesis decision
+  - [x] GraphRunner with SSE streaming
+  - [x] vis.js real-time graph visualization
+  - [x] API endpoints: /api/graph/run, /api/graph/stream, /api/graph/structure
+  - [x] Live visualization webpage (static/graph/)
+  - [x] Unit tests (36), Integration tests (7)
+  - [x] Documentation: docs/software-architecture/langgraph-pattern.md
 
 ---
 
@@ -116,6 +126,7 @@
 | **HTTP API** | **FastAPI** | REST for non-MCP clients, shared Pydantic | 2026-02-01 |
 | **Multi-Agent Pattern** | **Fan-out/Fan-in** | Parallel search, then merge results | 2026-02-01 |
 | **Chain Pattern** | **Sequential Pipeline** | Writer → Editor → Publisher with SSE | 2026-02-01 |
+| **LangGraph** | **DAG Orchestration** | StateGraph with conditional synthesis | 2026-02-01 |
 
 ---
 

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangGraph Execution Visualizer</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🔄 LangGraph Execution Visualizer</h1>
+            <p>Real-time visualization of DAG-based task orchestration</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Input Section -->
+            <section class="input-section">
+                <h2>Task Input</h2>
+                <div class="input-group">
+                    <textarea id="task" placeholder="Enter your task... (e.g., 'Calculate 5+3 and write a haiku about the result')"></textarea>
+                    <button id="runBtn" onclick="runGraph()">
+                        <span class="btn-icon">▶</span>
+                        Run Graph
+                    </button>
+                </div>
+                <div class="quick-tasks">
+                    <span>Quick tasks:</span>
+                    <button class="quick-btn" onclick="setTask('calcola 5+3')">Calculator</button>
+                    <button class="quick-btn" onclick="setTask('quanto costa un razzo SpaceX?')">Research + Estimate</button>
+                    <button class="quick-btn" onclick="setTask('analizza i pro e contro del remote working e riassumi')">Analysis + Summary</button>
+                </div>
+            </section>
+
+            <!-- Graph Section -->
+            <section class="graph-section">
+                <h2>Execution Graph</h2>
+                <div id="graph-container"></div>
+                <!-- Output inside graph section -->
+                <div class="output-panel">
+                    <h3>Final Output</h3>
+                    <div id="output" class="output-box">
+                        <p class="placeholder">Run a task to see the output...</p>
+                    </div>
+                </div>
+                <div class="graph-legend">
+                    <span class="legend pending">● Pending</span>
+                    <span class="legend running">● Running</span>
+                    <span class="legend completed">● Completed</span>
+                    <span class="legend failed">● Failed</span>
+                </div>
+            </section>
+
+            <!-- Timeline Section -->
+            <section class="timeline-section">
+                <h2>Event Timeline</h2>
+                <div id="timeline" class="timeline-box">
+                    <p class="placeholder">Events will appear here...</p>
+                </div>
+            </section>
+        </main>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <span id="status">Ready</span>
+            <span id="duration"></span>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

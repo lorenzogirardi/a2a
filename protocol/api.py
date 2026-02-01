@@ -5,17 +5,22 @@ Complementa FastMCP per client non-MCP (curl, browser, altri servizi).
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+# Get the project root directory (parent of protocol/)
+_PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+
 from auth.permissions import CallerContext, Role, PermissionDenied
 from .mcp_server import get_agents, get_storage, setup_default_agents
 from .sse import router as sse_router
 from .chain_router import router as chain_router
 from .router_api import router as router_api
+from .graph_api import router as graph_router
 
 # ============================================
 # Pydantic Models
@@ -87,15 +92,23 @@ app.include_router(chain_router)
 # Include Router API
 app.include_router(router_api)
 
+# Include Graph API (LangGraph)
+app.include_router(graph_router)
+
 # Mount static files for chain demo
-_static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "chain")
-if os.path.exists(_static_dir):
-    app.mount("/static/chain", StaticFiles(directory=_static_dir, html=True), name="chain-static")
+_static_dir = _PROJECT_ROOT / "static" / "chain"
+if _static_dir.exists():
+    app.mount("/static/chain", StaticFiles(directory=str(_static_dir), html=True), name="chain-static")
 
 # Mount static files for router demo
-_router_static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "router")
-if os.path.exists(_router_static_dir):
-    app.mount("/static/router", StaticFiles(directory=_router_static_dir, html=True), name="router-static")
+_router_static_dir = _PROJECT_ROOT / "static" / "router"
+if _router_static_dir.exists():
+    app.mount("/static/router", StaticFiles(directory=str(_router_static_dir), html=True), name="router-static")
+
+# Mount static files for graph demo (LangGraph)
+_graph_static_dir = _PROJECT_ROOT / "static" / "graph"
+if _graph_static_dir.exists():
+    app.mount("/static/graph", StaticFiles(directory=str(_graph_static_dir), html=True), name="graph-static")
 
 
 # ============================================
