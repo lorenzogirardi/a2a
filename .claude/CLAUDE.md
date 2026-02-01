@@ -3,6 +3,7 @@
 | Rule | When | Action |
 |------|------|--------|
 | **Status Check** | Session start/end | Read and update `status.md` |
+| **Use venv** | Running Python/tests | `source .venv/bin/activate` |
 | **TDD** | Always | Red -> Green -> Refactor -> Commit |
 | **Test Pyramid** | Writing tests | Unit (70%) > Integration (20%) > E2E (10%) |
 | **Python Skill** | Writing/Editing .py files | Invoke `/python` BEFORE Write or Edit |
@@ -148,6 +149,35 @@ a2a/
 ├── main.py              # Demo entry point
 └── run_mcp_server.py    # MCP server entry point
 ```
+
+---
+
+# Python Environment (MANDATORY)
+
+**Always use virtual environment for Python operations.**
+
+## Setup (first time)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Activation (every session)
+```bash
+source .venv/bin/activate
+```
+
+## When to use venv
+- Running tests: `pytest tests/`
+- Installing packages: `pip install ...`
+- Running scripts: `python main.py`
+- Starting servers: `python run_mcp_server.py`
+
+## Why
+- macOS uses externally-managed Python (PEP 668)
+- System Python should not be modified
+- Isolated dependencies per project
 
 ---
 
