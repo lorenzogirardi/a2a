@@ -271,3 +271,92 @@ Quick tasks:
 - "calcola 5+3" (single agent)
 - "quanto costa un razzo SpaceX?" (multi-agent with synthesis)
 - "analizza i pro e contro del remote working e riassumi" (analysis + summary)
+
+---
+
+## Architectural Decision: Why LangGraph but not LangChain?
+
+### What We Use
+
+| Package | Used | Purpose |
+|---------|------|---------|
+| `langgraph` | ✅ Direct | StateGraph, edges, DAG orchestration |
+| `langchain-core` | ✅ Transitive | Only `RunnableConfig` type (dependency of langgraph) |
+| `langchain` | ❌ No | Not needed |
+| `anthropic` | ✅ Direct | LLM calls |
+
+### Why Not Full LangChain?
+
+#### 1. Unnecessary Complexity
+
+```python
+# LangChain (verbose, abstract)
+from langchain_anthropic import ChatAnthropic
+from langchain.schema import HumanMessage, SystemMessage
+
+llm = ChatAnthropic(model="claude-sonnet-4-5")
+response = llm.invoke([
+    SystemMessage(content="..."),
+    HumanMessage(content="...")
+])
+
+# Direct Anthropic SDK (simple, explicit)
+from anthropic import Anthropic
+
+client = Anthropic()
+response = client.messages.create(
+    model="claude-sonnet-4-5",
+    system="...",
+    messages=[{"role": "user", "content": "..."}]
+)
+```
+
+#### 2. Too Many Abstractions
+
+| What We Need | LangChain Offers | What We Used |
+|--------------|------------------|--------------|
+| Call Claude | Chain, LLM wrapper, callbacks, memory | `client.messages.create()` |
+| Orchestrate agents | AgentExecutor, Tools, Chains | **LangGraph** (only this) |
+| Shared state | ConversationMemory, BufferMemory | `GraphState` (TypedDict) |
+| Routing | RouterChain, MultiPromptChain | `registry.find_by_capability()` |
+
+#### 3. Easier Debugging
+
+With direct Anthropic SDK:
+- See exactly what is sent to the API
+- No hidden layers
+- Readable stack traces
+
+With LangChain:
+- 10+ abstraction layers
+- Callbacks everywhere
+- Hard to trace errors
+
+#### 4. Educational Project
+
+The goal is **understanding patterns**, not hiding them:
+
+```python
+# Explicit pattern (understandable)
+async def execute_node(state):
+    for match in state["matches"]:
+        agent = registry.get(match["agent_id"])
+        result = await agent.receive_message(...)
+    return {"executions": results}
+
+# LangChain (black box)
+chain = RouterChain.from_llm(llm, routes=routes)
+result = chain.run(input)  # What happens inside? 🤷
+```
+
+#### 5. Why LangGraph is the Exception
+
+LangGraph was included because:
+- DAG orchestration is complex to reimplement correctly
+- Conditional edges are genuinely useful
+- It's **separate** from LangChain (minimal `langchain-core` dependency)
+- Adds structure without magic
+
+### Summary
+
+LangChain is useful for quick prototypes, but adds unnecessary complexity when you want control and understanding. For an educational project on multi-agent patterns, explicit code is better than abstracted chains.
