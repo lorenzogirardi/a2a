@@ -187,23 +187,160 @@ data: {"pipeline_id": "abc12345", "status": "completed", "final_output": "# Titl
 
 ## Agent Implementation
 
+### Three Distinct Agents
+
+The pipeline uses **3 separate agent instances**, each with its own identity and behavior:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          3 SEPARATE LLM CALLS                               │
+├─────────────────────┬─────────────────────┬─────────────────────────────────┤
+│    WriterAgent      │    EditorAgent      │    PublisherAgent               │
+├─────────────────────┼─────────────────────┼─────────────────────────────────┤
+│ ID: chain-writer    │ ID: chain-editor    │ ID: chain-publisher             │
+│ Role: Content       │ Role: Quality       │ Role: Formatting                │
+│       Generation    │       Improvement   │       & Structure               │
+├─────────────────────┼─────────────────────┼─────────────────────────────────┤
+│ "Sei uno scrittore  │ "Sei un editor      │ "Sei un publisher               │
+│  professionista..." │  professionista..." │  professionista..."             │
+├─────────────────────┼─────────────────────┼─────────────────────────────────┤
+│ Input: User prompt  │ Input: Writer's     │ Input: Editor's                 │
+│ Output: Draft text  │        draft        │        edited text              │
+│                     │ Output: Improved    │ Output: Final                   │
+│                     │         text        │         document                │
+└─────────────────────┴─────────────────────┴─────────────────────────────────┘
+```
+
+### System Prompts (Agent Personalities)
+
+Each agent has a **unique system prompt** that defines its behavior:
+
+| Agent | System Prompt | Behavior |
+|-------|---------------|----------|
+| **WriterAgent** | "Sei uno scrittore professionista. Quando ricevi un topic, genera un testo iniziale di 2-3 paragrafi. Sii creativo ma informativo." | Generates initial content from a topic |
+| **EditorAgent** | "Sei un editor professionista. Correggi errori grammaticali, migliora lo stile e la fluidità, rendi il testo più chiaro e conciso." | Improves quality without changing meaning |
+| **PublisherAgent** | "Sei un publisher professionista. Formatta per la pubblicazione: aggiungi titolo, organizza in sezioni, aggiungi conclusione." | Structures and formats for publication |
+
+### Why 3 Separate Agents?
+
+1. **Separation of Concerns**: Each agent has a single responsibility
+2. **Specialization**: Different system prompts = different "expertise"
+3. **Composability**: Agents can be reused or reordered
+4. **Observability**: Each step is independently measurable (tokens, duration)
+5. **Educational**: Clearly shows agent-to-agent communication
+
+### Agent Class Implementation
+
 Each chain agent extends `ChainStepAgent` and implements `transform()`:
 
 ```python
 class WriterAgent(ChainStepAgent):
+    """Generates initial content from a topic."""
+
     step_name = "writer"
 
-    def __init__(self, storage: StorageBase, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, storage: StorageBase, model: str = "claude-sonnet-4-5"):
         super().__init__(
             agent_id="chain-writer",
             storage=storage,
             system_prompt="""Sei uno scrittore professionista.
-            Quando ricevi un topic, genera un testo iniziale di 2-3 paragrafi...""",
+Quando ricevi un topic, genera un testo iniziale di 2-3 paragrafi.
+Sii creativo ma informativo. Scrivi in modo chiaro e coinvolgente.
+Non aggiungere meta-commenti, scrivi solo il contenuto.""",
             model=model
         )
 
     async def transform(self, text: str) -> str:
+        """Transform topic into draft text via LLM call."""
         return await self._call_llm(text)
+
+
+class EditorAgent(ChainStepAgent):
+    """Improves and refines text quality."""
+
+    step_name = "editor"
+
+    def __init__(self, storage: StorageBase, model: str = "claude-sonnet-4-5"):
+        super().__init__(
+            agent_id="chain-editor",
+            storage=storage,
+            system_prompt="""Sei un editor professionista.
+Quando ricevi un testo, miglioralo:
+- Correggi errori grammaticali e ortografici
+- Migliora lo stile e la fluidità
+- Rendi il testo più chiaro e conciso
+- Mantieni il significato originale
+Restituisci solo il testo migliorato, senza commenti.""",
+            model=model
+        )
+
+    async def transform(self, text: str) -> str:
+        """Transform draft into improved text via LLM call."""
+        return await self._call_llm(text)
+
+
+class PublisherAgent(ChainStepAgent):
+    """Formats text for publication."""
+
+    step_name = "publisher"
+
+    def __init__(self, storage: StorageBase, model: str = "claude-sonnet-4-5"):
+        super().__init__(
+            agent_id="chain-publisher",
+            storage=storage,
+            system_prompt="""Sei un publisher professionista.
+Quando ricevi un testo, formattalo per la pubblicazione:
+- Aggiungi un titolo appropriato (usa # per il titolo)
+- Organizza in sezioni se necessario (usa ## per le sezioni)
+- Aggiungi una breve conclusione
+- Usa markdown per la formattazione
+Restituisci solo il documento formattato.""",
+            model=model
+        )
+
+    async def transform(self, text: str) -> str:
+        """Transform edited text into formatted document via LLM call."""
+        return await self._call_llm(text)
+```
+
+### Data Flow Example
+
+```
+User Input: "Il futuro della moda sostenibile"
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ WriterAgent (LLM Call #1)                                   │
+│ System: "Sei uno scrittore professionista..."               │
+│ Input: "Il futuro della moda sostenibile"                   │
+│ Output: "La moda sostenibile non è più un'opzione di        │
+│          nicchia, ma sta diventando rapidamente..."         │
+│ Tokens: 91 in → 431 out                                     │
+└─────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ EditorAgent (LLM Call #2)                                   │
+│ System: "Sei un editor professionista..."                   │
+│ Input: [Writer's output - 431 tokens]                       │
+│ Output: [Improved text with better flow and clarity]        │
+│ Tokens: 534 in → 428 out                                    │
+└─────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ PublisherAgent (LLM Call #3)                                │
+│ System: "Sei un publisher professionista..."                │
+│ Input: [Editor's output - 428 tokens]                       │
+│ Output: "# Il futuro della moda sostenibile                 │
+│          ## Una rivoluzione in corso...                     │
+│          ## Conclusione..."                                 │
+│ Tokens: 529 in → 550 out                                    │
+└─────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+Final Output: Formatted markdown document with title, sections, conclusion
+Total: 3 LLM calls, ~1,154 input tokens, ~1,409 output tokens
 ```
 
 ## Pipeline Orchestration
