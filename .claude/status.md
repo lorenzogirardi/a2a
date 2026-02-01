@@ -27,6 +27,22 @@
   - [x] OrchestratorAgent (fan-out/fan-in pattern)
   - [x] FastAPI + FastMCP integration
   - [x] Unit + Integration tests
+- [x] **FileStorage** (Infrastructure)
+  - [x] JSON file persistence
+  - [x] Conversations + Agent states
+  - [x] 13 unit tests
+- [x] **LLM Agent con Claude API** (Infrastructure)
+  - [x] ToolUsingLLMAgent con tool_use loop
+  - [x] Supporto handler sync/async
+  - [x] 14 unit tests
+- [x] **Agent Discovery** (Infrastructure)
+  - [x] AgentRegistry centrale
+  - [x] Find by ID o capabilities
+  - [x] 22 unit tests
+- [x] **Documentation Structure** (docs/)
+  - [x] Enterprise Architecture
+  - [x] Software Architecture
+  - [x] Platform Architecture
 
 ---
 
@@ -47,12 +63,15 @@
 1. ~~Agent orchestration patterns~~ ✓ (Research Assistant)
 2. ~~Multi-agent workflows~~ ✓ (Fan-out/Fan-in pattern)
 
-### Priority 3 (Next)
-1. Add file-based storage (FileStorage)
-2. Implement LLM agent with real Claude calls
-3. Add agent discovery mechanism
-4. Database storage (SQLite/PostgreSQL)
-5. SSE transport for MCP
+### Priority 3 (Next) - COMPLETED
+1. ~~Add file-based storage (FileStorage)~~ ✓
+2. ~~Implement LLM agent with real Claude calls~~ ✓
+3. ~~Add agent discovery mechanism~~ ✓
+
+### Priority 4 (Future)
+1. Database storage (SQLite/PostgreSQL)
+2. SSE transport for MCP
+3. Additional use cases
 
 ---
 

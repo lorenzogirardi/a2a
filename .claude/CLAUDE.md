@@ -6,6 +6,7 @@
 | **Use venv** | Running Python/tests | `source .venv/bin/activate` |
 | **TDD** | Always | Red -> Green -> Refactor -> Commit |
 | **Test Pyramid** | Writing tests | Unit (70%) > Integration (20%) > E2E (10%) |
+| **Documentation** | New features/changes | Update relevant docs/ section |
 | **Python Skill** | Writing/Editing .py files | Invoke `/python` BEFORE Write or Edit |
 | **MCP Skill** | Working on protocol/agents | Invoke `/mcp` for MCP patterns |
 | **Conventional Commits** | Every commit | feat/fix/docs/style/refactor/test/chore |
@@ -135,20 +136,54 @@ a2a/
 ├── agents/
 │   ├── base.py          # AgentBase class
 │   ├── simple_agent.py  # Echo, Counter, Router, Calculator
-│   └── llm_agent.py     # LLM-based agents
+│   ├── llm_agent.py     # LLM-based agents
+│   └── registry.py      # AgentRegistry for discovery
 ├── storage/
 │   ├── base.py          # StorageBase interface
-│   └── memory.py        # MemoryStorage implementation
+│   ├── memory.py        # MemoryStorage implementation
+│   └── file.py          # FileStorage implementation
 ├── auth/
 │   └── permissions.py   # Role, Permission, CallerContext
 ├── protocol/
 │   ├── mcp_server.py    # FastMCP server implementation
 │   └── api.py           # FastAPI REST endpoints
+├── docs/                # Architecture documentation
+│   ├── enterprise-architecture/
+│   ├── software-architecture/
+│   └── platform-architecture/
 ├── tests/               # Test files
 ├── specs/               # Feature specifications
 ├── main.py              # Demo entry point
 └── run_mcp_server.py    # MCP server entry point
 ```
+
+---
+
+# Documentation (MANDATORY)
+
+**Location**: `docs/`
+
+## Three Architecture Layers
+
+| Layer | Path | Scope |
+|-------|------|-------|
+| **Enterprise** | `docs/enterprise-architecture/` | Business context, domains, strategy |
+| **Software** | `docs/software-architecture/` | Components, patterns, APIs, code |
+| **Platform** | `docs/platform-architecture/` | Infrastructure, deployment, security |
+
+## When to Update Documentation
+
+- **New feature**: Add to software-architecture (components, APIs)
+- **New capability**: Add to enterprise-architecture (business context)
+- **Deployment change**: Add to platform-architecture (infra, security)
+- **Architectural decision**: Add ADR to relevant layer
+
+## Documentation Principles
+
+- Keep docs close to code (in `docs/`, not external wiki)
+- Use diagrams (Mermaid preferred)
+- Document WHY, not just WHAT
+- Update docs with code changes (same PR/commit)
 
 ---
 
