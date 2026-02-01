@@ -206,6 +206,42 @@ async def resource_agent_state(agent_id: str) -> str:
     return await get_agent_state(agent_id)
 
 
+# ============================================
+# Research Tools
+# ============================================
+
+_research_orchestrator = None
+
+
+def get_research_orchestrator():
+    """Get or create the research orchestrator."""
+    global _research_orchestrator
+    if _research_orchestrator is None:
+        from agents.research import OrchestratorAgent
+        _research_orchestrator = OrchestratorAgent(get_storage())
+    return _research_orchestrator
+
+
+@mcp.tool()
+async def research(query: str) -> str:
+    """
+    Perform multi-source research on a query.
+
+    Searches web, documentation, and code sources in parallel,
+    then aggregates and ranks the results.
+
+    Args:
+        query: The research query (e.g., "python async patterns")
+
+    Returns:
+        JSON with aggregated results from all sources
+    """
+    orchestrator = get_research_orchestrator()
+    result = await orchestrator.research(query)
+
+    return json.dumps(result.model_dump(), indent=2, default=str)
+
+
 def setup_default_agents() -> None:
     """Setup degli agenti di default per testing."""
     from agents import EchoAgent, CounterAgent, CalculatorAgent, RouterAgent

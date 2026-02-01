@@ -291,6 +291,42 @@ async def get_conversation_messages(conversation_id: str):
 
 
 # ============================================
+# Research Endpoints
+# ============================================
+
+_research_orchestrator = None
+
+
+def get_research_orchestrator():
+    """Get or create the research orchestrator."""
+    global _research_orchestrator
+    if _research_orchestrator is None:
+        from agents.research import OrchestratorAgent
+        _research_orchestrator = OrchestratorAgent(get_storage())
+    return _research_orchestrator
+
+
+@app.get("/api/research", tags=["Research"])
+async def research(q: str):
+    """
+    Perform multi-source research on a query.
+
+    Searches web, documentation, and code sources in parallel,
+    then aggregates and ranks the results.
+
+    Args:
+        q: The research query (e.g., "python async patterns")
+
+    Returns:
+        Aggregated results from all sources
+    """
+    orchestrator = get_research_orchestrator()
+    result = await orchestrator.research(q)
+
+    return result.model_dump()
+
+
+# ============================================
 # Error Handlers
 # ============================================
 
