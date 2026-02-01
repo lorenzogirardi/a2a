@@ -43,7 +43,7 @@ class ChainStepAgent(LLMAgent):
         agent_id: str,
         storage: StorageBase,
         system_prompt: str,
-        model: str = "claude-sonnet-4-20250514"
+        model: str = "claude-sonnet-4-5"
     ):
         super().__init__(
             agent_id=agent_id,

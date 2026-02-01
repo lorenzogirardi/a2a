@@ -22,7 +22,7 @@ class EditorAgent(ChainStepAgent):
     def __init__(
         self,
         storage: StorageBase,
-        model: str = "claude-sonnet-4-20250514"
+        model: str = "claude-sonnet-4-5"
     ):
         super().__init__(
             agent_id="chain-editor",

@@ -22,7 +22,7 @@ class LLMAgent(AgentBase):
     Agente che usa LiteLLM per elaborare i messaggi.
 
     Supporta multipli provider:
-    - Claude: model="claude-sonnet-4-20250514" (richiede ANTHROPIC_API_KEY)
+    - Claude: model="claude-sonnet-4-5" (richiede ANTHROPIC_API_KEY)
     - OpenAI: model="gpt-4" (richiede OPENAI_API_KEY)
     - Ollama: model="ollama/llama2" (richiede server Ollama)
 
@@ -34,7 +34,7 @@ class LLMAgent(AgentBase):
         agent_id: str,
         storage: StorageBase,
         system_prompt: str = "Sei un assistente utile.",
-        model: str = "claude-sonnet-4-20250514"
+        model: str = "claude-sonnet-4-5"
     ):
         config = AgentConfig(
             id=agent_id,
@@ -129,7 +129,7 @@ class ToolUsingLLMAgent(LLMAgent):
         agent_id: str,
         storage: StorageBase,
         system_prompt: str = "Sei un assistente con accesso a tools. Usa i tools quando necessario.",
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-5",
         max_tool_rounds: int = 5
     ):
         super().__init__(agent_id, storage, system_prompt, model)
