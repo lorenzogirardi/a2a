@@ -1,17 +1,17 @@
 """
 LLM Agent - Agente basato su Large Language Model.
 
-CONCETTO: Questo agente usa un LLM (Claude) per decidere cosa fare.
-A differenza degli agenti semplici, può:
-- Capire linguaggio naturale
-- Ragionare su problemi complessi
-- Generare risposte creative
+Usa LiteLLM per supportare multipli provider LLM (Claude, OpenAI, Ollama, ecc.)
+con un'interfaccia unificata.
 
-Per ora è uno stub - verrà implementato quando aggiungerai anthropic ai requirements.
+Configurazione via variabili d'ambiente:
+- ANTHROPIC_API_KEY: per modelli Claude
+- OPENAI_API_KEY: per modelli OpenAI
+- LITELLM_API_BASE: per proxy custom
 """
 
-from typing import Any, Optional
-import os
+from typing import Any
+import asyncio
 
 from storage.base import StorageBase, Message
 from .base import AgentBase, AgentConfig
@@ -19,10 +19,14 @@ from .base import AgentBase, AgentConfig
 
 class LLMAgent(AgentBase):
     """
-    Agente che usa Claude per elaborare i messaggi.
+    Agente che usa LiteLLM per elaborare i messaggi.
 
-    Richiede: pip install anthropic
-    E la variabile d'ambiente ANTHROPIC_API_KEY
+    Supporta multipli provider:
+    - Claude: model="claude-sonnet-4-20250514" (richiede ANTHROPIC_API_KEY)
+    - OpenAI: model="gpt-4" (richiede OPENAI_API_KEY)
+    - Ollama: model="ollama/llama2" (richiede server Ollama)
+
+    LiteLLM gestisce automaticamente il routing basato sul nome del modello.
     """
 
     def __init__(
@@ -35,43 +39,26 @@ class LLMAgent(AgentBase):
         config = AgentConfig(
             id=agent_id,
             name=f"LLM Agent ({agent_id})",
-            description="Agente basato su Claude",
+            description="Agente basato su LLM",
             capabilities=["conversation", "reasoning", "generation"]
         )
         super().__init__(config, storage)
 
         self.system_prompt = system_prompt
         self.model = model
-        self._client = None
-
-    def _get_client(self):
-        """Lazy initialization del client Anthropic."""
-        if self._client is None:
-            try:
-                import anthropic
-                self._client = anthropic.Anthropic()
-            except ImportError:
-                raise ImportError(
-                    "Per usare LLMAgent installa anthropic: pip install anthropic"
-                )
-            except Exception as e:
-                raise RuntimeError(
-                    f"Errore inizializzazione client Anthropic: {e}. "
-                    "Assicurati di avere ANTHROPIC_API_KEY impostata."
-                )
-        return self._client
 
     async def think(self, message: Message) -> dict[str, Any]:
-        """Usa Claude per elaborare il messaggio."""
+        """Usa LiteLLM per elaborare il messaggio."""
         try:
-            client = self._get_client()
+            import litellm
 
             # Costruisci il contesto dalla cronologia
             conversation_id = message.metadata.get("conversation_id", "default")
             history = await self.storage.get_messages(conversation_id)
 
-            # Converti in formato Claude
-            messages = []
+            # Costruisci messaggi in formato OpenAI (usato da LiteLLM)
+            messages = [{"role": "system", "content": self.system_prompt}]
+
             for msg in history[-10:]:  # Ultimi 10 messaggi per contesto
                 role = "user" if msg.sender != self.id else "assistant"
                 messages.append({"role": role, "content": msg.content})
@@ -79,32 +66,38 @@ class LLMAgent(AgentBase):
             # Aggiungi il messaggio corrente
             messages.append({"role": "user", "content": message.content})
 
-            # Chiama Claude
-            response = client.messages.create(
+            # Chiama LLM via LiteLLM
+            response = await litellm.acompletion(
                 model=self.model,
-                max_tokens=1024,
-                system=self.system_prompt,
-                messages=messages
+                messages=messages,
+                max_tokens=1024
             )
 
-            response_text = response.content[0].text
+            response_text = response.choices[0].message.content
+            usage = response.usage
 
             return {
                 "response": response_text,
-                "actions": [],  # LLM agent base non esegue azioni
+                "actions": [],
                 "state_updates": {
                     "last_model": self.model,
-                    "last_tokens": response.usage.output_tokens
+                    "last_tokens": usage.completion_tokens if usage else 0
                 },
                 "metadata": {
                     "model": self.model,
                     "usage": {
-                        "input_tokens": response.usage.input_tokens,
-                        "output_tokens": response.usage.output_tokens
+                        "input_tokens": usage.prompt_tokens if usage else 0,
+                        "output_tokens": usage.completion_tokens if usage else 0
                     }
                 }
             }
 
+        except ImportError:
+            return {
+                "response": "Errore: litellm non installato. Esegui: pip install litellm",
+                "actions": [],
+                "state_updates": {"last_error": "litellm not installed"}
+            }
         except Exception as e:
             return {
                 "response": f"Errore nell'elaborazione: {str(e)}",
@@ -119,13 +112,16 @@ class LLMAgent(AgentBase):
 
 class ToolUsingLLMAgent(LLMAgent):
     """
-    LLM Agent che può usare tools definiti tramite Claude tool_use.
+    LLM Agent che può usare tools.
 
     Pattern:
     1. Riceve messaggio
-    2. Claude decide se usare tool o rispondere
-    3. Se tool_use: esegue tool, manda risultato a Claude
+    2. LLM decide se usare tool o rispondere
+    3. Se tool_use: esegue tool, manda risultato a LLM
     4. Loop fino a risposta finale
+
+    Nota: Il supporto tool varia per provider. Claude e OpenAI supportano tools,
+    altri provider potrebbero non supportarli.
     """
 
     def __init__(
@@ -152,21 +148,24 @@ class ToolUsingLLMAgent(LLMAgent):
 
         Args:
             name: Nome univoco del tool
-            description: Descrizione per Claude
+            description: Descrizione per l'LLM
             input_schema: JSON Schema dei parametri
-            handler: Funzione async da chiamare (riceve dict, ritorna str)
+            handler: Funzione async/sync da chiamare (riceve dict, ritorna str)
         """
         self._tools[name] = {
             "schema": {
-                "name": name,
-                "description": description,
-                "input_schema": input_schema
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description,
+                    "parameters": input_schema
+                }
             },
             "handler": handler
         }
 
     def _get_tool_schemas(self) -> list[dict]:
-        """Ritorna gli schemas dei tools per Claude."""
+        """Ritorna gli schemas dei tools per LiteLLM."""
         return [t["schema"] for t in self._tools.values()]
 
     async def _execute_tool(self, name: str, input_data: dict) -> str:
@@ -176,8 +175,6 @@ class ToolUsingLLMAgent(LLMAgent):
 
         handler = self._tools[name]["handler"]
         try:
-            # Handler può essere sync o async
-            import asyncio
             if asyncio.iscoroutinefunction(handler):
                 result = await handler(input_data)
             else:
@@ -187,20 +184,20 @@ class ToolUsingLLMAgent(LLMAgent):
             return f"Error executing tool '{name}': {str(e)}"
 
     async def think(self, message: Message) -> dict[str, Any]:
-        """Usa Claude con tool_use per elaborare il messaggio."""
+        """Usa LiteLLM con tools per elaborare il messaggio."""
         if not self._tools:
-            # No tools, usa comportamento base
             return await super().think(message)
 
         try:
-            client = self._get_client()
+            import litellm
 
             # Costruisci contesto
             conversation_id = message.metadata.get("conversation_id", "default")
             history = await self.storage.get_messages(conversation_id)
 
-            # Converti in formato Claude
-            messages = []
+            # Costruisci messaggi
+            messages = [{"role": "system", "content": self.system_prompt}]
+
             for msg in history[-10:]:
                 role = "user" if msg.sender != self.id else "assistant"
                 messages.append({"role": role, "content": msg.content})
@@ -208,95 +205,93 @@ class ToolUsingLLMAgent(LLMAgent):
             messages.append({"role": "user", "content": message.content})
 
             # Tool use loop
-            tool_calls = []
+            tool_calls_log = []
             rounds = 0
 
             while rounds < self.max_tool_rounds:
                 rounds += 1
 
-                response = client.messages.create(
+                response = await litellm.acompletion(
                     model=self.model,
-                    max_tokens=1024,
-                    system=self.system_prompt,
                     messages=messages,
+                    max_tokens=1024,
                     tools=self._get_tool_schemas()
                 )
 
-                # Controlla stop_reason
-                if response.stop_reason == "end_turn":
+                choice = response.choices[0]
+                assistant_message = choice.message
+
+                # Controlla se ci sono tool calls
+                if not assistant_message.tool_calls:
                     # Risposta finale
-                    text_content = next(
-                        (b.text for b in response.content if hasattr(b, "text")),
-                        ""
-                    )
                     return {
-                        "response": text_content,
+                        "response": assistant_message.content or "",
                         "actions": [],
                         "state_updates": {
                             "last_model": self.model,
-                            "tool_calls": tool_calls
+                            "tool_calls": tool_calls_log
                         },
                         "metadata": {
                             "model": self.model,
                             "tool_rounds": rounds,
-                            "tool_calls": tool_calls
+                            "tool_calls": tool_calls_log
                         }
                     }
 
-                elif response.stop_reason == "tool_use":
-                    # Estrai tool calls
-                    tool_use_blocks = [
-                        b for b in response.content
-                        if hasattr(b, "type") and b.type == "tool_use"
+                # Aggiungi risposta assistant ai messaggi
+                messages.append({
+                    "role": "assistant",
+                    "content": assistant_message.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        }
+                        for tc in assistant_message.tool_calls
                     ]
+                })
 
-                    if not tool_use_blocks:
-                        break
+                # Esegui ogni tool
+                import json
+                for tool_call in assistant_message.tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        tool_input = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        tool_input = {}
 
-                    # Aggiungi risposta assistant ai messaggi
-                    messages.append({
-                        "role": "assistant",
-                        "content": response.content
+                    result = await self._execute_tool(tool_name, tool_input)
+                    tool_calls_log.append({
+                        "tool": tool_name,
+                        "input": tool_input,
+                        "result": result
                     })
 
-                    # Esegui ogni tool e raccogli risultati
-                    tool_results = []
-                    for tool_block in tool_use_blocks:
-                        tool_name = tool_block.name
-                        tool_input = tool_block.input
-                        tool_id = tool_block.id
-
-                        result = await self._execute_tool(tool_name, tool_input)
-                        tool_calls.append({
-                            "tool": tool_name,
-                            "input": tool_input,
-                            "result": result
-                        })
-
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": tool_id,
-                            "content": result
-                        })
-
-                    # Aggiungi risultati ai messaggi
+                    # Aggiungi risultato
                     messages.append({
-                        "role": "user",
-                        "content": tool_results
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result
                     })
-
-                else:
-                    # Stop reason sconosciuto
-                    break
 
             # Fallback se loop esaurito
             return {
                 "response": "Reached maximum tool rounds without final response.",
                 "actions": [],
-                "state_updates": {"tool_calls": tool_calls},
-                "metadata": {"tool_rounds": rounds, "tool_calls": tool_calls}
+                "state_updates": {"tool_calls": tool_calls_log},
+                "metadata": {"tool_rounds": rounds, "tool_calls": tool_calls_log}
             }
 
+        except ImportError:
+            return {
+                "response": "Errore: litellm non installato. Esegui: pip install litellm",
+                "actions": [],
+                "state_updates": {"last_error": "litellm not installed"}
+            }
         except Exception as e:
             return {
                 "response": f"Errore nell'elaborazione: {str(e)}",

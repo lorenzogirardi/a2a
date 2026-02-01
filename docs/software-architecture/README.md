@@ -22,6 +22,7 @@ graph TB
         CALC[CalculatorAgent]
         LLM[LLMAgent]
         ORCH[OrchestratorAgent]
+        CHAIN_P[ChainPipeline]
     end
 
     subgraph "Storage Layer"
@@ -59,6 +60,7 @@ graph LR
         SIMPLE[simple_agent.py<br/>Echo, Counter, Router]
         LLMA[llm_agent.py<br/>LLMAgent, ToolUsingLLMAgent]
         RESEARCH[research/<br/>Orchestrator, Search agents]
+        CHAIN[chain/<br/>Writer, Editor, Publisher]
         REGISTRY[registry.py<br/>AgentRegistry]
     end
 
@@ -143,6 +145,51 @@ sequenceDiagram
     O-->>C: AggregatedResult
 ```
 
+## Chain Pipeline (Sequential Processing)
+
+See: [chain-pattern.md](./chain-pattern.md)
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant P as Pipeline
+    participant W as Writer
+    participant E as Editor
+    participant Pub as Publisher
+    participant UI as Browser
+
+    C->>P: run(prompt)
+    P-->>UI: SSE: pipeline_started
+
+    P->>W: transform(prompt)
+    P-->>UI: SSE: step_started(writer)
+    W-->>P: draft_text
+    P-->>UI: SSE: step_completed(writer, tokens)
+    P-->>UI: SSE: message_passed(writer→editor)
+
+    P->>E: transform(draft_text)
+    P-->>UI: SSE: step_started(editor)
+    E-->>P: edited_text
+    P-->>UI: SSE: step_completed(editor, tokens)
+    P-->>UI: SSE: message_passed(editor→publisher)
+
+    P->>Pub: transform(edited_text)
+    P-->>UI: SSE: step_started(publisher)
+    Pub-->>P: final_text
+    P-->>UI: SSE: step_completed(publisher, tokens)
+
+    P-->>UI: SSE: pipeline_completed
+    P-->>UI: SSE: result
+    P-->>C: PipelineResult
+```
+
+**Key Features:**
+- Sequential agent execution with SSE events
+- Token tracking per step (via LiteLLM)
+- KPI dashboard: duration, tokens, cost
+- Agent communication visualization
+- Real-time UI updates
+
 ## Storage Abstraction
 
 ```mermaid
@@ -188,6 +235,11 @@ classDiagram
 | GET | `/api/research?q=...` | Research query |
 | GET | `/sse/events` | SSE stream |
 | POST | `/sse/call` | Call tool via SSE |
+| POST | `/api/chain/run` | Start chain pipeline |
+| GET | `/api/chain/status/{id}` | Get pipeline status |
+| GET | `/api/chain/agents` | List chain agents |
+| GET | `/api/chain/events/{id}` | SSE events stream |
+| GET | `/static/chain/` | Chain demo webpage |
 
 ## Error Handling
 

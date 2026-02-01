@@ -21,11 +21,22 @@ Questo progetto nasce per rispondere a domande fondamentali sui sistemi multi-ag
 └─────────────────┘       └───────────────┬─────────────────┘
                                           │
 ┌─────────────────┐       ┌───────────────▼─────────────────┐
-│  HTTP Client    │◄─────►│  FastAPI (/api/agents)          │
+│  HTTP Client    │◄─────►│  FastAPI (/api/*)               │
+└─────────────────┘       └───────────────┬─────────────────┘
+                                          │
+┌─────────────────┐       ┌───────────────▼─────────────────┐
+│  Browser (SSE)  │◄──────│  Server-Sent Events             │
 └─────────────────┘       └───────────────┬─────────────────┘
                                           │
                           ┌───────────────▼─────────────────┐
-                          │  Agents + Storage + Auth        │
+                          │  Agents                         │
+                          │  ├── Simple (Echo, Calc, etc.)  │
+                          │  ├── Research (Fan-out/Fan-in)  │
+                          │  └── Chain (Writer→Editor→Pub)  │
+                          └───────────────┬─────────────────┘
+                                          │
+                          ┌───────────────▼─────────────────┐
+                          │  Storage + Auth + LiteLLM       │
                           └─────────────────────────────────┘
 ```
 
@@ -37,9 +48,12 @@ Questo progetto nasce per rispondere a domande fondamentali sui sistemi multi-ag
 | MCP Server | FastMCP |
 | HTTP API | FastAPI |
 | Validation | Pydantic v2 |
-| Storage | Abstract (memory → file → DB) |
+| Storage | Abstract (memory → file → PostgreSQL) |
 | Auth | Role-based permissions |
+| LLM | LiteLLM (Claude, OpenAI, etc.) |
+| Streaming | Server-Sent Events (SSE) |
 | Testing | pytest (Test Pyramid) |
+| Container | Docker + Docker Compose |
 
 ## Quick Start
 
@@ -48,10 +62,14 @@ Questo progetto nasce per rispondere a domande fondamentali sui sistemi multi-ag
 git clone https://github.com/lorenzogirardi/a2a.git
 cd a2a
 
-# Install
-pip install -r requirements.txt
+# Start with Docker
+docker-compose up -d
 
-# Run demo
+# Open Chain Pipeline Demo
+open http://localhost:8000/static/chain/
+
+# Or install locally
+pip install -r requirements.txt
 python main.py
 ```
 
@@ -62,24 +80,42 @@ a2a/
 ├── agents/
 │   ├── base.py          # AgentBase class
 │   ├── simple_agent.py  # Echo, Counter, Router, Calculator
-│   └── llm_agent.py     # LLM-based agents
+│   ├── llm_agent.py     # LLM-based agents (LiteLLM)
+│   ├── research/        # Research Assistant (fan-out/fan-in)
+│   └── chain/           # Chain Pipeline (sequential)
+│       ├── writer.py    # WriterAgent
+│       ├── editor.py    # EditorAgent
+│       ├── publisher.py # PublisherAgent
+│       └── pipeline.py  # ChainPipeline orchestrator
 ├── storage/
 │   ├── base.py          # StorageBase interface
-│   └── memory.py        # MemoryStorage implementation
+│   ├── memory.py        # MemoryStorage
+│   ├── file.py          # FileStorage
+│   └── postgres.py      # PostgresStorage
 ├── auth/
 │   └── permissions.py   # Role, Permission, CallerContext
 ├── protocol/
 │   ├── mcp_server.py    # FastMCP server
-│   └── api.py           # FastAPI REST endpoints
+│   ├── api.py           # FastAPI REST endpoints
+│   ├── sse.py           # SSE transport
+│   └── chain_router.py  # Chain API endpoints
+├── static/
+│   └── chain/           # Chain Pipeline Demo UI
+│       ├── index.html
+│       ├── app.js
+│       └── style.css
 ├── tests/
 │   ├── unit/            # 70% - Fast, isolated
 │   ├── integration/     # 20% - Components together
 │   └── e2e/             # 10% - Full system
+├── docs/                # Architecture documentation
 ├── .claude/             # Claude Code configuration
 └── .github/workflows/   # CI/CD pipelines
 ```
 
 ## Agenti Disponibili
+
+### Simple Agents
 
 | Agente | Descrizione |
 |--------|-------------|
@@ -87,7 +123,59 @@ a2a/
 | `CounterAgent` | Conta i messaggi ricevuti |
 | `RouterAgent` | Smista messaggi ad altri agenti |
 | `CalculatorAgent` | Esegue calcoli matematici |
-| `LLMAgent` | Agente basato su Claude (stub) |
+| `LLMAgent` | Agente basato su Claude API |
+
+### Chain Pipeline Agents
+
+| Agente | Descrizione |
+|--------|-------------|
+| `WriterAgent` | Genera testo iniziale da un topic |
+| `EditorAgent` | Migliora stile, grammatica e chiarezza |
+| `PublisherAgent` | Formatta per pubblicazione |
+
+### Research Agents
+
+| Agente | Descrizione |
+|--------|-------------|
+| `WebSearchAgent` | Ricerca sul web |
+| `DocSearchAgent` | Ricerca nella documentazione |
+| `CodeSearchAgent` | Ricerca nel codice |
+| `OrchestratorAgent` | Coordina ricerche parallele |
+
+## Demo Interattive
+
+### Chain Pipeline Demo
+
+Visualizzazione in tempo reale di agenti che comunicano in sequenza:
+
+```
+http://localhost:8000/static/chain/
+```
+
+**Features:**
+- 📝 Writer → Editor → Publisher pipeline
+- 📡 Eventi SSE in tempo reale
+- 📊 KPI Dashboard (tokens, durata, costo stimato)
+- 💬 Visualizzazione comunicazione tra agenti
+- 🔄 Esecuzione con Claude API via LiteLLM
+
+```mermaid
+graph LR
+    P[Prompt] --> W[Writer]
+    W -->|draft| E[Editor]
+    E -->|edited| Pub[Publisher]
+    Pub --> O[Output]
+    W & E & Pub --> SSE[SSE Events]
+    SSE --> UI[Live UI]
+```
+
+### Research Assistant
+
+Query di ricerca parallela con aggregazione:
+
+```bash
+curl "http://localhost:8000/api/research?q=python"
+```
 
 ## Sistema di Permessi
 

@@ -1,4 +1,4 @@
-"""Unit tests for LLM agents."""
+"""Unit tests for LLM agents (using LiteLLM)."""
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
@@ -16,38 +16,36 @@ def storage():
 
 
 @pytest.fixture
-def mock_anthropic_response():
-    """Create a mock Anthropic response."""
-    def _create(text="Test response", input_tokens=10, output_tokens=20, stop_reason="end_turn"):
+def mock_litellm_response():
+    """Create a mock LiteLLM response."""
+    def _create(content="Test response", input_tokens=10, output_tokens=20, tool_calls=None):
         response = Mock()
-        content_block = Mock()
-        content_block.text = text
-        content_block.type = "text"
-        response.content = [content_block]
-        response.stop_reason = stop_reason
+        message = Mock()
+        message.content = content
+        message.tool_calls = tool_calls
+
+        choice = Mock()
+        choice.message = message
+
+        response.choices = [choice]
         response.usage = Mock()
-        response.usage.input_tokens = input_tokens
-        response.usage.output_tokens = output_tokens
+        response.usage.prompt_tokens = input_tokens
+        response.usage.completion_tokens = output_tokens
+
         return response
     return _create
 
 
 @pytest.fixture
-def mock_tool_use_response():
-    """Create a mock Anthropic tool_use response."""
-    def _create(tool_name, tool_input, tool_id="tool-123"):
-        response = Mock()
-        tool_block = Mock()
-        tool_block.type = "tool_use"
-        tool_block.name = tool_name
-        tool_block.input = tool_input
-        tool_block.id = tool_id
-        response.content = [tool_block]
-        response.stop_reason = "tool_use"
-        response.usage = Mock()
-        response.usage.input_tokens = 10
-        response.usage.output_tokens = 20
-        return response
+def mock_tool_call():
+    """Create a mock tool call."""
+    def _create(name, arguments, tool_id="call-123"):
+        tool_call = Mock()
+        tool_call.id = tool_id
+        tool_call.function = Mock()
+        tool_call.function.name = name
+        tool_call.function.arguments = arguments if isinstance(arguments, str) else __import__('json').dumps(arguments)
+        return tool_call
     return _create
 
 
@@ -64,19 +62,17 @@ class TestLLMAgent:
 
     def test_custom_model(self, storage):
         """Should accept custom model."""
-        agent = LLMAgent("test", storage, model="claude-3-opus-20240229")
-        assert agent.model == "claude-3-opus-20240229"
+        agent = LLMAgent("test", storage, model="gpt-4")
+        assert agent.model == "gpt-4"
 
     @pytest.mark.asyncio
-    async def test_think_calls_claude(self, storage, mock_anthropic_response):
-        """Should call Claude API with correct parameters."""
+    async def test_think_calls_litellm(self, storage, mock_litellm_response):
+        """Should call LiteLLM with correct parameters."""
         agent = LLMAgent("test-llm", storage)
 
-        # Mock the client
-        mock_client = Mock()
-        mock_client.messages.create.return_value = mock_anthropic_response("Hello!")
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.return_value = mock_litellm_response("Hello!")
 
-        with patch.object(agent, "_get_client", return_value=mock_client):
             msg = Message(
                 id="msg-1",
                 sender="user",
@@ -88,15 +84,20 @@ class TestLLMAgent:
             result = await agent.think(msg)
 
             assert result["response"] == "Hello!"
-            mock_client.messages.create.assert_called_once()
+            mock_acompletion.assert_called_once()
 
-            call_kwargs = mock_client.messages.create.call_args[1]
+            call_kwargs = mock_acompletion.call_args[1]
             assert call_kwargs["model"] == "claude-sonnet-4-20250514"
-            assert call_kwargs["system"] == "Sei un assistente utile."
-            assert {"role": "user", "content": "Hi there"} in call_kwargs["messages"]
+            assert call_kwargs["max_tokens"] == 1024
+
+            # Check messages include system prompt and user message
+            messages = call_kwargs["messages"]
+            assert messages[0]["role"] == "system"
+            assert messages[0]["content"] == "Sei un assistente utile."
+            assert {"role": "user", "content": "Hi there"} in messages
 
     @pytest.mark.asyncio
-    async def test_think_includes_history(self, storage, mock_anthropic_response):
+    async def test_think_includes_history(self, storage, mock_litellm_response):
         """Should include conversation history in messages."""
         agent = LLMAgent("test-llm", storage)
 
@@ -112,10 +113,9 @@ class TestLLMAgent:
             metadata={"conversation_id": conv_id}
         ))
 
-        mock_client = Mock()
-        mock_client.messages.create.return_value = mock_anthropic_response("Response")
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.return_value = mock_litellm_response("Response")
 
-        with patch.object(agent, "_get_client", return_value=mock_client):
             msg = Message(
                 id="msg-new",
                 sender="user",
@@ -127,23 +127,22 @@ class TestLLMAgent:
 
             await agent.think(msg)
 
-            call_kwargs = mock_client.messages.create.call_args[1]
+            call_kwargs = mock_acompletion.call_args[1]
             messages = call_kwargs["messages"]
 
-            # Should have both old and new message
-            assert len(messages) >= 2
+            # Should have system + old + new message
+            assert len(messages) >= 3
 
     @pytest.mark.asyncio
-    async def test_think_returns_metadata(self, storage, mock_anthropic_response):
+    async def test_think_returns_metadata(self, storage, mock_litellm_response):
         """Should return token usage in metadata."""
         agent = LLMAgent("test-llm", storage)
 
-        mock_client = Mock()
-        mock_client.messages.create.return_value = mock_anthropic_response(
-            "Test", input_tokens=50, output_tokens=100
-        )
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.return_value = mock_litellm_response(
+                "Test", input_tokens=50, output_tokens=100
+            )
 
-        with patch.object(agent, "_get_client", return_value=mock_client):
             msg = Message(
                 id="msg-1",
                 sender="user",
@@ -162,10 +161,9 @@ class TestLLMAgent:
         """Should handle API errors gracefully."""
         agent = LLMAgent("test-llm", storage)
 
-        mock_client = Mock()
-        mock_client.messages.create.side_effect = Exception("API Error")
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.side_effect = Exception("API Error")
 
-        with patch.object(agent, "_get_client", return_value=mock_client):
             msg = Message(
                 id="msg-1",
                 sender="user",
@@ -202,7 +200,8 @@ class TestToolUsingLLMAgent:
 
         schemas = agent._get_tool_schemas()
         assert len(schemas) == 1
-        assert schemas[0]["name"] == "calculator"
+        assert schemas[0]["type"] == "function"
+        assert schemas[0]["function"]["name"] == "calculator"
 
     @pytest.mark.asyncio
     async def test_execute_tool_sync(self, storage):
@@ -262,9 +261,9 @@ class TestToolUsingLLMAgent:
 
     @pytest.mark.asyncio
     async def test_think_with_tool_use(
-        self, storage, mock_tool_use_response, mock_anthropic_response
+        self, storage, mock_litellm_response, mock_tool_call
     ):
-        """Should execute tools when Claude requests them."""
+        """Should execute tools when LLM requests them."""
         agent = ToolUsingLLMAgent("tool-agent", storage)
 
         # Add a simple tool
@@ -281,14 +280,15 @@ class TestToolUsingLLMAgent:
             handler=lambda x: x["a"] + x["b"]
         )
 
-        mock_client = Mock()
-        # First call: tool_use, second call: end_turn
-        mock_client.messages.create.side_effect = [
-            mock_tool_use_response("add", {"a": 2, "b": 3}),
-            mock_anthropic_response("The sum is 5")
-        ]
+        # First call: tool_use, second call: final response
+        tool_call = mock_tool_call("add", {"a": 2, "b": 3})
 
-        with patch.object(agent, "_get_client", return_value=mock_client):
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.side_effect = [
+                mock_litellm_response(content=None, tool_calls=[tool_call]),
+                mock_litellm_response("The sum is 5")
+            ]
+
             msg = Message(
                 id="msg-1",
                 sender="user",
@@ -305,15 +305,14 @@ class TestToolUsingLLMAgent:
             assert result["metadata"]["tool_calls"][0]["result"] == "5"
 
     @pytest.mark.asyncio
-    async def test_think_no_tools_falls_back(self, storage, mock_anthropic_response):
+    async def test_think_no_tools_falls_back(self, storage, mock_litellm_response):
         """Should use base behavior when no tools registered."""
         agent = ToolUsingLLMAgent("tool-agent", storage)
         # No tools added
 
-        mock_client = Mock()
-        mock_client.messages.create.return_value = mock_anthropic_response("Direct response")
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            mock_acompletion.return_value = mock_litellm_response("Direct response")
 
-        with patch.object(agent, "_get_client", return_value=mock_client):
             msg = Message(
                 id="msg-1",
                 sender="user",
@@ -329,7 +328,7 @@ class TestToolUsingLLMAgent:
             assert "tool_calls" not in result.get("metadata", {})
 
     @pytest.mark.asyncio
-    async def test_max_tool_rounds(self, storage, mock_tool_use_response):
+    async def test_max_tool_rounds(self, storage, mock_litellm_response, mock_tool_call):
         """Should stop after max_tool_rounds."""
         agent = ToolUsingLLMAgent("tool-agent", storage, max_tool_rounds=2)
 
@@ -340,11 +339,14 @@ class TestToolUsingLLMAgent:
             handler=lambda x: "loop"
         )
 
-        mock_client = Mock()
-        # Always returns tool_use
-        mock_client.messages.create.return_value = mock_tool_use_response("loop", {})
+        tool_call = mock_tool_call("loop", {})
 
-        with patch.object(agent, "_get_client", return_value=mock_client):
+        with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+            # Always returns tool_use
+            mock_acompletion.return_value = mock_litellm_response(
+                content=None, tool_calls=[tool_call]
+            )
+
             msg = Message(
                 id="msg-1",
                 sender="user",

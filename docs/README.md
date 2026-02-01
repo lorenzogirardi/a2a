@@ -46,7 +46,8 @@ docs/
 │   ├── README.md          # Business capabilities, domain model
 │   └── adr/               # Architecture Decision Records
 ├── software-architecture/
-│   └── README.md          # Components, patterns, APIs
+│   ├── README.md          # Components, patterns, APIs
+│   └── chain-pattern.md   # Chain Pipeline Demo documentation
 └── platform-architecture/
     └── README.md          # Docker, database, operations
 ```
@@ -72,3 +73,22 @@ curl http://localhost:8000/health
 # Try research API
 curl "http://localhost:8000/api/research?q=python"
 ```
+
+## Demos
+
+### Chain Pipeline Demo
+
+Interactive visualization of sequential agent communication:
+
+```bash
+# Open in browser
+open http://localhost:8000/static/chain/
+```
+
+**Features:**
+- Writer → Editor → Publisher pipeline
+- Real-time SSE events
+- KPI dashboard (tokens, duration, cost)
+- Agent communication visualization
+
+See: [Chain Pattern Documentation](software-architecture/chain-pattern.md)

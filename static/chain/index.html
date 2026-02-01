@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chain Pipeline Demo - A2A</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Chain Pipeline Demo</h1>
+            <p class="subtitle">Document Processing: Writer → Editor → Publisher</p>
+        </header>
+
+        <!-- Input Section -->
+        <section class="input-section">
+            <div class="prompt-container">
+                <label for="prompt">Enter a topic to write about:</label>
+                <textarea id="prompt" placeholder="e.g., The impact of artificial intelligence on modern healthcare"></textarea>
+            </div>
+            <button id="runBtn" class="run-button">
+                <span class="btn-text">Run Pipeline</span>
+                <span class="btn-loader" style="display: none;">⏳</span>
+            </button>
+        </section>
+
+        <!-- KPI Dashboard -->
+        <section class="kpi-section">
+            <h2>Pipeline Metrics</h2>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-icon">⏱️</div>
+                    <div class="kpi-value" id="kpi-duration">-</div>
+                    <div class="kpi-label">Total Duration</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon">📥</div>
+                    <div class="kpi-value" id="kpi-input-tokens">-</div>
+                    <div class="kpi-label">Input Tokens</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon">📤</div>
+                    <div class="kpi-value" id="kpi-output-tokens">-</div>
+                    <div class="kpi-label">Output Tokens</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon">🔢</div>
+                    <div class="kpi-value" id="kpi-total-tokens">-</div>
+                    <div class="kpi-label">Total Tokens</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon">🤖</div>
+                    <div class="kpi-value" id="kpi-model">-</div>
+                    <div class="kpi-label">Model</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon">💰</div>
+                    <div class="kpi-value" id="kpi-cost">-</div>
+                    <div class="kpi-label">Est. Cost</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pipeline Visualization -->
+        <section class="pipeline-section">
+            <h2>Pipeline Status</h2>
+            <div class="pipeline-visual">
+                <div class="agent-box" id="writer-box">
+                    <div class="agent-icon">✍️</div>
+                    <div class="agent-name">Writer</div>
+                    <div class="agent-status">Waiting</div>
+                    <div class="agent-tokens" id="writer-tokens"></div>
+                </div>
+                <div class="arrow" id="arrow-1">→</div>
+                <div class="agent-box" id="editor-box">
+                    <div class="agent-icon">📝</div>
+                    <div class="agent-name">Editor</div>
+                    <div class="agent-status">Waiting</div>
+                    <div class="agent-tokens" id="editor-tokens"></div>
+                </div>
+                <div class="arrow" id="arrow-2">→</div>
+                <div class="agent-box" id="publisher-box">
+                    <div class="agent-icon">📰</div>
+                    <div class="agent-name">Publisher</div>
+                    <div class="agent-status">Waiting</div>
+                    <div class="agent-tokens" id="publisher-tokens"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Agent Communication View -->
+        <section class="communication-section">
+            <h2>Agent Communication</h2>
+            <div id="communication" class="communication-flow">
+                <div class="communication-placeholder">Messages between agents will appear here...</div>
+            </div>
+        </section>
+
+        <!-- Events Timeline -->
+        <section class="timeline-section">
+            <h2>Event Timeline</h2>
+            <div id="timeline" class="timeline">
+                <div class="timeline-placeholder">Events will appear here when the pipeline runs...</div>
+            </div>
+        </section>
+
+        <!-- Output Section -->
+        <section class="output-section">
+            <h2>Final Output</h2>
+            <div id="output" class="output-content">
+                <div class="output-placeholder">The final document will appear here...</div>
+            </div>
+        </section>
+
+        <!-- Step Details -->
+        <section class="details-section">
+            <h2>Step Details</h2>
+            <div id="step-details" class="step-details">
+                <div class="details-placeholder">Click on a step in the timeline to see details...</div>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

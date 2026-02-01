@@ -57,11 +57,20 @@
   - [x] Enterprise Architecture (capabilities, domain, ADRs)
   - [x] Software Architecture (components, patterns, APIs)
   - [x] Platform Architecture (Docker, DB, operations)
+- [x] **Chain Pipeline Demo** (Use Case #2)
+  - [x] Sequential agent chain: Writer → Editor → Publisher
+  - [x] ChainStepAgent base class (extends LLMAgent)
+  - [x] Pydantic models: PipelineInput, StepResult, PipelineResult
+  - [x] ChainPipeline orchestrator with SSE events
+  - [x] API endpoints: /api/chain/run, /api/chain/status, /api/chain/events
+  - [x] Live visualization webpage (static/chain/)
+  - [x] Unit tests (21), Integration tests (8), E2E tests (8)
+  - [x] Documentation: docs/software-architecture/chain-pattern.md
 
 ---
 
 ## In Progress
-- [ ] Select next use case to implement
+- [ ] None currently
 
 ---
 
@@ -106,6 +115,7 @@
 | **MCP Server** | **FastMCP** | Decorator-based, simpler than raw mcp | 2026-02-01 |
 | **HTTP API** | **FastAPI** | REST for non-MCP clients, shared Pydantic | 2026-02-01 |
 | **Multi-Agent Pattern** | **Fan-out/Fan-in** | Parallel search, then merge results | 2026-02-01 |
+| **Chain Pattern** | **Sequential Pipeline** | Writer → Editor → Publisher with SSE | 2026-02-01 |
 
 ---
 
@@ -176,3 +186,37 @@ User -> CallerContext -> Agent.receive_message() -> think() -> act() -> Response
   - Tests: `test_research_agents.py`, `test_research_pipeline.py`
   - Fixed Bandit B104: env vars for host binding
   - Created spec and tasks in `specs/`
+- **Chain Pipeline Demo Implementation** (Use Case #2):
+  - Created `agents/chain/` module:
+    - `models.py`: PipelineInput, StepResult, PipelineResult (Pydantic)
+    - `base.py`: ChainStepAgent abstract class (extends LLMAgent)
+    - `writer.py`: WriterAgent - generates initial text
+    - `editor.py`: EditorAgent - improves and corrects
+    - `publisher.py`: PublisherAgent - formats for publication
+    - `pipeline.py`: ChainPipeline orchestrator with SSE events
+  - Created `protocol/chain_router.py`:
+    - POST /api/chain/run - start pipeline
+    - GET /api/chain/status/{id} - get status/result
+    - GET /api/chain/agents - list chain agents
+    - GET /api/chain/events/{id} - SSE events stream
+  - Created `static/chain/` frontend:
+    - index.html - demo page structure
+    - app.js - SSE client and UI logic
+    - style.css - dark theme styling
+  - Tests:
+    - 21 unit tests (test_chain_agents.py)
+    - 8 integration tests (test_chain_pipeline.py)
+    - 8 E2E tests (test_chain_api.py)
+  - Documentation: docs/software-architecture/chain-pattern.md
+  - **KPI & Communication Visualization**:
+    - TokenUsage model with input/output token tracking
+    - TransformResult dataclass for metadata capture
+    - transform_with_metadata() for full pipeline stats
+    - KPI Dashboard: duration, tokens, model, estimated cost
+    - Agent Communication View: colored message bubbles showing flow
+    - LiteLLM integration for multi-provider LLM support
+  - **Documentation Updated**:
+    - docs/software-architecture/chain-pattern.md (full docs)
+    - docs/software-architecture/README.md (sequence diagram)
+    - docs/README.md (quick links)
+    - README.md (project overview with demos)

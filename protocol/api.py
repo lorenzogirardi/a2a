@@ -4,14 +4,17 @@ FastAPI REST API - Espone gli agenti tramite HTTP REST.
 Complementa FastMCP per client non-MCP (curl, browser, altri servizi).
 """
 
+import os
 from typing import Optional
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from auth.permissions import CallerContext, Role, PermissionDenied
 from .mcp_server import get_agents, get_storage, setup_default_agents
 from .sse import router as sse_router
+from .chain_router import router as chain_router
 
 # ============================================
 # Pydantic Models
@@ -76,6 +79,14 @@ app = FastAPI(
 
 # Include SSE router
 app.include_router(sse_router)
+
+# Include Chain router
+app.include_router(chain_router)
+
+# Mount static files for chain demo
+_static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "chain")
+if os.path.exists(_static_dir):
+    app.mount("/static/chain", StaticFiles(directory=_static_dir, html=True), name="chain-static")
 
 
 # ============================================
