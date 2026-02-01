@@ -44,6 +44,57 @@ Questo documento illustra il flusso completo di esecuzione del sistema LangGraph
 
 ---
 
+## Architettura SSE (Server-Sent Events)
+
+Il sistema usa **SSE** per inviare aggiornamenti in tempo reale dal backend al frontend, permettendo la visualizzazione live del grafo durante l'esecuzione.
+
+### Perché SSE e non WebSocket?
+
+| Aspetto | SSE | WebSocket |
+|---------|-----|-----------|
+| Direzione | Unidirezionale (server→client) | Bidirezionale |
+| Complessità | Semplice HTTP | Protocollo separato |
+| Riconnessione | Automatica | Manuale |
+| Formato | Testo (JSON) | Binario o testo |
+| **Uso qui** | ✅ Perfetto (solo push) | Overkill |
+
+SSE è ideale per questo caso perché il client non deve mandare dati durante l'esecuzione, solo ricevere aggiornamenti.
+
+### Flusso SSE
+
+```
+┌─────────────────┐         SSE Stream          ┌─────────────────┐
+│                 │  ─────────────────────────▶ │                 │
+│  FastAPI        │   event: graph_update       │   Browser       │
+│  Backend        │   data: {"node": ...}       │   (vis.js)      │
+│                 │                             │                 │
+│  GraphRunner    │   event: execution_completed│   fetch() +     │
+│                 │   data: {"output": ...}     │   ReadableStream│
+└─────────────────┘                             └─────────────────┘
+     │                                                   │
+     │ async yield                                       │ reader.read()
+     ▼                                                   ▼
+  AsyncGenerator                                    Parse & Update
+```
+
+### Formato Messaggi SSE
+
+Ogni messaggio SSE segue questo formato:
+```
+event: <tipo_evento>
+data: <json_payload>
+
+```
+
+Tipi di evento utilizzati:
+- `execution_started` - Task iniziato
+- `graph_update` - Aggiornamento nodo/arco del grafo
+- `execution_completed` - Task completato con output finale
+- `execution_failed` - Errore durante l'esecuzione
+- `done` - Stream terminato
+
+---
+
 ## Fase 1: ANALYZE (Analisi del Task)
 
 **Durata**: 4,100ms
@@ -477,6 +528,196 @@ def build_router_graph() -> CompiledStateGraph:
     return graph.compile()
 ```
 
+### SSE Backend (FastAPI)
+
+```python
+# protocol/graph_api.py
+@router.post("/stream")
+async def run_and_stream(request: GraphTaskRequest):
+    """Esegue il grafo e streama eventi SSE."""
+    runner = get_graph_runner()
+
+    async def event_generator():
+        # Itera sugli eventi del runner
+        async for event in runner.stream(task=request.task):
+            event_type = event.get("type", "message")
+            data_str = json.dumps(event)
+
+            # Formato SSE: event + data + doppio newline
+            yield f"event: {event_type}\n"
+            yield f"data: {data_str}\n\n"
+
+        # Segnala fine stream
+        yield "event: done\n"
+        yield "data: {\"status\": \"completed\"}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",  # Content-Type SSE
+        headers={
+            "Cache-Control": "no-cache",      # No caching
+            "Connection": "keep-alive",        # Mantieni connessione
+            "X-Accel-Buffering": "no",        # Disabilita buffering nginx
+        }
+    )
+```
+
+### SSE Runner (Emissione Eventi)
+
+```python
+# agents/graph/runner.py
+async def stream(self, task: str, task_id: str = None):
+    """Esegue il grafo e yield eventi SSE."""
+
+    # Evento iniziale
+    yield {
+        "type": "execution_started",
+        "task": task,
+        "task_id": task_id,
+        "timestamp": datetime.now().isoformat()
+    }
+
+    # Esegue il grafo LangGraph con streaming
+    async for state in self.graph.astream(initial_state):
+        # Per ogni cambio di stato, emetti eventi grafo
+        for event in self._extract_graph_events(state):
+            yield event
+
+    # Evento finale
+    yield {
+        "type": "execution_completed",
+        "status": "completed",
+        "duration_ms": duration,
+        "final_output": state["final_output"]
+    }
+```
+
+### SSE Nodi (Generazione Eventi Grafo)
+
+```python
+# agents/graph/nodes.py
+async def analyze_node(state: GraphState, config: RunnableConfig) -> dict:
+    # Emetti evento: nodo in esecuzione
+    emit_event(config, {
+        "type": "graph_update",
+        "action": "add_node",
+        "node": {"id": "analyze", "label": "Analyzer", "state": "running"}
+    })
+
+    # ... esegui analisi LLM ...
+
+    # Emetti evento: nodo completato
+    emit_event(config, {
+        "type": "graph_update",
+        "action": "update_node",
+        "node": {"id": "analyze", "state": "completed", "duration_ms": 4100}
+    })
+
+    # Emetti nodi capability con archi
+    for cap in capabilities:
+        emit_event(config, {
+            "type": "graph_update",
+            "action": "add_node",
+            "node": {"id": f"cap_{cap}", "label": cap, "type": "capability"}
+        })
+        emit_event(config, {
+            "type": "graph_update",
+            "action": "add_edge",
+            "edge": {"from": "analyze", "to": f"cap_{cap}"}
+        })
+
+    return {"detected_capabilities": capabilities, ...}
+```
+
+### SSE Frontend (JavaScript)
+
+```javascript
+// static/graph/app.js
+async function runGraph() {
+    const response = await fetch('/api/graph/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task })
+    });
+
+    // Leggi lo stream SSE via ReadableStream API
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events dal buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop();  // Mantieni linea incompleta
+
+        let eventType = 'message';
+        for (const line of lines) {
+            if (line.startsWith('event: ')) {
+                eventType = line.substring(7).trim();
+            } else if (line.startsWith('data: ')) {
+                const data = JSON.parse(line.substring(6));
+
+                // Gestisci evento in base al tipo
+                if (eventType === 'graph_update') {
+                    handleGraphUpdate(data);  // Aggiorna vis.js
+                }
+                if (eventType === 'execution_completed') {
+                    setOutput(data.final_output);
+                }
+                addTimelineEvent(data);  // Aggiorna timeline
+            }
+        }
+    }
+}
+```
+
+### vis.js Update Handler
+
+```javascript
+// static/graph/app.js
+function handleGraphUpdate(event) {
+    if (event.action === 'add_node') {
+        // Aggiungi nodo al grafo vis.js
+        nodes.add({
+            id: event.node.id,
+            label: event.node.label,
+            color: getNodeColor(event.node.state),  // grigio/giallo/verde/rosso
+            shape: getNodeShape(event.node.type)    // diamond/box/dot
+        });
+    }
+    else if (event.action === 'update_node') {
+        // Aggiorna colore nodo esistente (es. running → completed)
+        nodes.update({
+            id: event.node.id,
+            color: getNodeColor(event.node.state)
+        });
+    }
+    else if (event.action === 'add_edge') {
+        // Aggiungi arco tra nodi
+        edges.add({
+            from: event.edge.from,
+            to: event.edge.to
+        });
+    }
+}
+
+function getNodeColor(state) {
+    const colors = {
+        pending: '#475569',    // Grigio
+        running: '#f59e0b',    // Giallo/Arancio
+        completed: '#22c55e',  // Verde
+        failed: '#ef4444',     // Rosso
+        matched: '#3b82f6'     // Blu
+    };
+    return colors[state] || colors.pending;
+}
+```
+
 ---
 
 ## Output Finale
@@ -518,6 +759,7 @@ Il sistema LangGraph dimostra:
 3. **Esecuzione Parallela**: Massima efficienza temporale con fan-out pattern
 4. **Sintesi Coerente**: Output multipli vengono integrati in una risposta unificata
 5. **Tracciabilità Completa**: Ogni step è visualizzato in tempo reale nel grafo
+6. **Real-time Streaming**: SSE permette aggiornamenti istantanei senza polling, con riconnessione automatica e basso overhead
 
 ### Link Correlati
 
