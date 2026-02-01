@@ -5,7 +5,7 @@ from .web_search import WebSearchAgent
 from .doc_search import DocSearchAgent
 from .code_search import CodeSearchAgent
 from .merge import MergeAgent
-from .orchestrator import OrchestratorAgent
+from .orchestrator import OrchestratorAgent, create_research_system
 
 __all__ = [
     "SearchResult",
@@ -16,4 +16,5 @@ __all__ = [
     "CodeSearchAgent",
     "MergeAgent",
     "OrchestratorAgent",
+    "create_research_system",
 ]
