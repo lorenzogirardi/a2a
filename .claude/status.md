@@ -105,3 +105,8 @@ User -> CallerContext -> Agent.receive_message() -> think() -> act() -> Response
 - Added **Test Pyramid** requirement
   - Unit (70%), Integration (20%), E2E (10%)
   - Updated CLAUDE.md and python skill
+- Added **Security GitHub Action** (.github/workflows/security.yml)
+  - Trivy, TruffleHog, Bandit, pip-audit, Semgrep
+  - Created security skill
+- Created **README.md** with project overview
+- Pushed to GitHub: https://github.com/lorenzogirardi/a2a

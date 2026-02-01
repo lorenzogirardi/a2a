@@ -158,6 +158,7 @@ a2a/
 | `python` | `.py` | BEFORE Write/Edit |
 | `mcp` | MCP protocol work | Agent communication |
 | `scm` | Git operations | Commits, PRs, branches |
+| `security` | Dependencies, secrets | Before commit with new deps |
 | `spec-driven-dev` | New features | `/spec.plan` |
 
 ---

@@ -1,0 +1,198 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ============================================
+  # TRIVY - Vulnerability Scanner
+  # ============================================
+  trivy:
+    name: Trivy Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy'
+
+      - name: Run Trivy (table output for PR comments)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+
+  # ============================================
+  # TRUFFLEHOG - Secrets Scanner
+  # ============================================
+  trufflehog:
+    name: TruffleHog Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+
+      - name: TruffleHog scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+      - name: TruffleHog scan (all commits on push)
+        if: github.event_name == 'push'
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          extra_args: --since-commit=${{ github.event.before }} --only-verified
+
+  # ============================================
+  # PYTHON SECURITY SCANNERS
+  # ============================================
+  python-security:
+    name: Python Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          pip install --upgrade pip
+          pip install bandit safety pip-audit semgrep
+
+      # ------------------------------------------
+      # BANDIT - Python code security linter
+      # ------------------------------------------
+      - name: Run Bandit (code security)
+        run: |
+          bandit -r . -x ./tests,./.venv,./venv -f json -o bandit-report.json || true
+          bandit -r . -x ./tests,./.venv,./venv -f txt -o bandit-report.txt || true
+          echo "### Bandit Security Report" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat bandit-report.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+      - name: Bandit check (fail on high severity)
+        run: |
+          bandit -r . -x ./tests,./.venv,./venv -ll -ii
+
+      # ------------------------------------------
+      # PIP-AUDIT - Dependency vulnerability scan
+      # ------------------------------------------
+      - name: Install project dependencies
+        run: |
+          pip install -r requirements.txt || true
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: |
+          pip-audit --format json --output pip-audit-report.json || true
+          pip-audit --format markdown --output pip-audit-report.md || true
+          echo "### Pip-Audit Dependency Report" >> $GITHUB_STEP_SUMMARY
+          cat pip-audit-report.md >> $GITHUB_STEP_SUMMARY || echo "No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload pip-audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
+
+      - name: pip-audit check (fail on vulnerabilities)
+        run: |
+          pip-audit --strict
+
+      # ------------------------------------------
+      # SAFETY - Another dependency checker
+      # ------------------------------------------
+      - name: Run Safety (dependency check)
+        run: |
+          safety check --full-report -r requirements.txt || true
+        continue-on-error: true
+
+      # ------------------------------------------
+      # SEMGREP - Static analysis
+      # ------------------------------------------
+      - name: Run Semgrep (static analysis)
+        run: |
+          semgrep --config=auto --json --output=semgrep-report.json . || true
+          semgrep --config=auto --text --output=semgrep-report.txt . || true
+          echo "### Semgrep Static Analysis Report" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          head -100 semgrep-report.txt >> $GITHUB_STEP_SUMMARY || echo "No issues found" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Semgrep report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-report
+          path: semgrep-report.json
+
+  # ============================================
+  # SUMMARY JOB
+  # ============================================
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [trivy, trufflehog, python-security]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Scanner | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trivy | ${{ needs.trivy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| TruffleHog | ${{ needs.trufflehog.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python Security | ${{ needs.python-security.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any security scan failed
+        if: |
+          needs.trivy.result == 'failure' ||
+          needs.trufflehog.result == 'failure' ||
+          needs.python-security.result == 'failure'
+        run: |
+          echo "One or more security scans failed!"
+          exit 1
