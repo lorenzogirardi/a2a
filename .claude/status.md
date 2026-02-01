@@ -220,3 +220,13 @@ User -> CallerContext -> Agent.receive_message() -> think() -> act() -> Response
     - docs/software-architecture/README.md (sequence diagram)
     - docs/README.md (quick links)
     - README.md (project overview with demos)
+- [x] **Smart Task Router** (Use Case #3)
+  - [x] AnalyzerAgent: LLM-based capability extraction
+  - [x] TaskExecutor: Execute subtasks on matched agents
+  - [x] SmartRouter: Orchestrate analyze → discover → execute
+  - [x] Registry-based agent discovery
+  - [x] SSE events for real-time UI updates
+  - [x] API endpoints: /api/router/route, /api/router/registry
+  - [x] Live visualization webpage (static/router/)
+  - [x] Unit tests (37 tests)
+  - [x] Documentation: docs/software-architecture/router-pattern.md

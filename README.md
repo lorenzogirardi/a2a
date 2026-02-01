@@ -169,6 +169,28 @@ graph LR
     SSE --> UI[Live UI]
 ```
 
+### Smart Task Router
+
+Routing intelligente basato su capability:
+
+```bash
+open http://localhost:8000/static/router/
+```
+
+**Features:**
+- 🔍 Analisi task con LLM
+- 📋 Discovery agenti via Registry
+- ⚡ Esecuzione parallela subtask
+- 🎯 Matching capability-based
+
+```mermaid
+graph LR
+    T[Task] --> A[Analyzer]
+    A -->|capabilities| R[Registry]
+    R -->|agents| E[Executor]
+    E --> O[Output]
+```
+
 ### Research Assistant
 
 Query di ricerca parallela con aggregazione:

@@ -47,7 +47,8 @@ docs/
 │   └── adr/               # Architecture Decision Records
 ├── software-architecture/
 │   ├── README.md          # Components, patterns, APIs
-│   └── chain-pattern.md   # Chain Pipeline Demo documentation
+│   ├── chain-pattern.md   # Chain Pipeline Demo documentation
+│   └── router-pattern.md  # Smart Router Demo documentation
 └── platform-architecture/
     └── README.md          # Docker, database, operations
 ```
@@ -81,7 +82,6 @@ curl "http://localhost:8000/api/research?q=python"
 Interactive visualization of sequential agent communication:
 
 ```bash
-# Open in browser
 open http://localhost:8000/static/chain/
 ```
 
@@ -92,3 +92,19 @@ open http://localhost:8000/static/chain/
 - Agent communication visualization
 
 See: [Chain Pattern Documentation](software-architecture/chain-pattern.md)
+
+### Smart Task Router Demo
+
+Interactive visualization of capability-based agent discovery:
+
+```bash
+open http://localhost:8000/static/router/
+```
+
+**Features:**
+- 3-step flow: Analyze → Discover → Execute
+- LLM-based task analysis
+- Registry-based agent discovery
+- Multi-capability task routing
+
+See: [Router Pattern Documentation](software-architecture/router-pattern.md)

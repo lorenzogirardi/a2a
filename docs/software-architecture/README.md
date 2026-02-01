@@ -149,6 +149,45 @@ sequenceDiagram
 
 See: [chain-pattern.md](./chain-pattern.md)
 
+## Smart Task Router (Capability-Based Discovery)
+
+See: [router-pattern.md](./router-pattern.md)
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant R as SmartRouter
+    participant A as AnalyzerAgent
+    participant Reg as AgentRegistry
+    participant E as TaskExecutor
+    participant Ag as Matched Agents
+
+    C->>R: route(task)
+    R->>A: analyze(task)
+    A-->>R: {capabilities, subtasks}
+
+    loop For each capability
+        R->>Reg: find_by_capability(cap)
+        Reg-->>R: matched_agents[]
+    end
+
+    R->>E: execute_all(matches, subtasks)
+
+    loop For each match
+        E->>Ag: receive_message(subtask)
+        Ag-->>E: result
+    end
+
+    E-->>R: execution_results[]
+    R-->>C: RouterResult
+```
+
+**Key Features:**
+- LLM-based task analysis
+- Registry for dynamic agent discovery
+- Capability-based matching
+- Parallel execution of subtasks
+
 ```mermaid
 sequenceDiagram
     participant C as Client
@@ -240,6 +279,11 @@ classDiagram
 | GET | `/api/chain/agents` | List chain agents |
 | GET | `/api/chain/events/{id}` | SSE events stream |
 | GET | `/static/chain/` | Chain demo webpage |
+| POST | `/api/router/route` | Route task to agents |
+| GET | `/api/router/status/{id}` | Get routing status |
+| GET | `/api/router/registry` | List registered agents |
+| GET | `/api/router/events/{id}` | SSE events stream |
+| GET | `/static/router/` | Router demo webpage |
 
 ## Error Handling
 
