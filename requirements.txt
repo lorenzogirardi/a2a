@@ -1,0 +1,13 @@
+# Core dependencies
+fastmcp>=0.1.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.0.0
+httpx>=0.25.0
+
+# For LLM agent (optional, install when ready)
+# anthropic>=0.18.0
+
+# Development
+pytest>=7.0.0
+pytest-asyncio>=0.23.0
