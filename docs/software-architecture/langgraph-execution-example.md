@@ -1,24 +1,24 @@
-# LangGraph Execution: Esempio Dettagliato
+# LangGraph Execution: Detailed Example
 
-> **Task**: "Avendo budget di 30000 dollari al mese, e dovendo costruire un piccolo team di ecommerce come andrebbe composto il team tecnico"
+> **Task**: "With a budget of 30000 dollars per month, and needing to build a small ecommerce team, how should the technical team be composed"
 
-Questo documento illustra il flusso completo di esecuzione del sistema LangGraph, mostrando come una richiesta complessa viene scomposta, distribuita a più agenti specializzati, e infine sintetizzata in una risposta coerente.
+This document illustrates the complete execution flow of the LangGraph system, showing how a complex request is decomposed, distributed to multiple specialized agents, and finally synthesized into a coherent response.
 
 ## Demo Video
 
 [![Demo LangGraph Execution](https://res.cloudinary.com/ethzero/video/upload/so_3,w_800/v1769976053/ai/a2a/agent-discovery-graph.jpg)](https://res.cloudinary.com/ethzero/video/upload/v1769976053/ai/a2a/agent-discovery-graph.mp4)
 
-*Clicca sull'immagine per vedere il video dell'esecuzione in tempo reale*
+*Click on the image to watch the real-time execution video*
 
 ---
 
-## Overview del Sistema
+## System Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              USER TASK                                       │
-│  "avendo budget di 30000 dollari al mese, e dovendo costruire un piccolo    │
-│   team di ecommerce come andrebbe composto il team tecnico"                 │
+│  "with a budget of 30000 dollars per month, and needing to build a small    │
+│   ecommerce team, how should the technical team be composed"                │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │
                                       ▼
@@ -50,35 +50,35 @@ Questo documento illustra il flusso completo di esecuzione del sistema LangGraph
 
 ---
 
-## Comunicazione tra Nodi: Lo State
+## Node Communication: The State
 
-I nodi LangGraph **non comunicano direttamente tra loro**. Ogni nodo riceve lo stato corrente, lo modifica, e passa lo stato aggiornato al nodo successivo.
+LangGraph nodes **do not communicate directly with each other**. Each node receives the current state, modifies it, and passes the updated state to the next node.
 
 ```python
 # agents/graph/state.py
 class GraphState(TypedDict):
-    # Input iniziale
+    # Initial input
     task_id: str
     original_task: str
 
-    # Output di ANALYZE → Input di DISCOVER
+    # Output of ANALYZE → Input of DISCOVER
     detected_capabilities: Annotated[list[str], operator.add]
     subtasks: dict[str, str]  # capability → subtask description
     dependencies: Optional[dict[str, list[str]]]
 
-    # Output di DISCOVER → Input di EXECUTE
+    # Output of DISCOVER → Input of EXECUTE
     matches: list[dict[str, Any]]  # capability → agent_ids
 
-    # Output di EXECUTE → Input di SYNTHESIZE
+    # Output of EXECUTE → Input of SYNTHESIZE
     executions: Annotated[list[dict[str, Any]], operator.add]
 
-    # Output di SYNTHESIZE
+    # Output of SYNTHESIZE
     synthesis: Optional[dict[str, Any]]
     final_output: str
     status: str
 ```
 
-### Flusso dello State
+### State Flow
 
 ```
 ┌─────────────┐    state["original_task"]     ┌─────────────┐
@@ -98,69 +98,69 @@ class GraphState(TypedDict):
 
 ---
 
-## Fase 1: ANALYZE - Selezione delle Capabilities
+## Phase 1: ANALYZE - Capability Selection
 
-**Durata**: 4,100ms
-**Nodo**: `analyze`
-**Componente**: AnalyzerAgent (LLM-based)
+**Duration**: 4,100ms
+**Node**: `analyze`
+**Component**: AnalyzerAgent (LLM-based)
 
-### Come l'Analyzer Decide le Capabilities
+### How the Analyzer Decides Capabilities
 
-L'Analyzer usa un LLM (Claude) con un prompt strutturato che:
+The Analyzer uses an LLM (Claude) with a structured prompt that:
 
-1. **Analizza semanticamente** il task in linguaggio naturale
-2. **Identifica le competenze necessarie** mappandole a capabilities note
-3. **Scompone in subtask** indipendenti per ogni capability
+1. **Semantically analyzes** the task in natural language
+2. **Identifies required skills** mapping them to known capabilities
+3. **Decomposes into subtasks** independent for each capability
 
 ```python
 # agents/router/analyzer.py
 ANALYZER_PROMPT = """
-Analizza il seguente task e identifica le capabilities necessarie.
+Analyze the following task and identify the required capabilities.
 
-CAPABILITIES DISPONIBILI:
-- analysis: Analisi approfondita, pro/contro, valutazioni
-- estimation: Stime di costi, tempi, quantità
-- research: Ricerca informazioni, dati, riferimenti
-- calculation: Operazioni matematiche
-- translation: Traduzione tra lingue
-- summary: Riassunto di testi lunghi
+AVAILABLE CAPABILITIES:
+- analysis: In-depth analysis, pros/cons, evaluations
+- estimation: Cost, time, quantity estimates
+- research: Information research, data, references
+- calculation: Mathematical operations
+- translation: Translation between languages
+- summary: Summarizing long texts
 
 TASK: {task}
 
-Rispondi in JSON:
+Respond in JSON:
 {{
   "capabilities": ["cap1", "cap2", ...],
   "subtasks": {{
-    "cap1": "descrizione subtask specifico per cap1",
-    "cap2": "descrizione subtask specifico per cap2"
+    "cap1": "specific subtask description for cap1",
+    "cap2": "specific subtask description for cap2"
   }},
-  "dependencies": null  // o {{"cap2": ["cap1"]}} se cap2 dipende da cap1
+  "dependencies": null  // or {{"cap2": ["cap1"]}} if cap2 depends on cap1
 }}
 """
 ```
 
-### Criteri di Selezione
+### Selection Criteria
 
-| Parole chiave nel task | Capability selezionata |
-|------------------------|------------------------|
-| "analizza", "valuta", "pro e contro" | `analysis` |
-| "quanto costa", "stima", "budget" | `estimation` |
-| "cerca", "informazioni su", "come funziona" | `research` |
-| "calcola", numeri, operazioni | `calculation` |
-| "traduci", lingua specifica | `translation` |
-| "riassumi", "sintetizza" | `summary` |
+| Keywords in task | Selected capability |
+|------------------|---------------------|
+| "analyze", "evaluate", "pros and cons" | `analysis` |
+| "how much", "estimate", "budget" | `estimation` |
+| "search", "information about", "how does it work" | `research` |
+| "calculate", numbers, operations | `calculation` |
+| "translate", specific language | `translation` |
+| "summarize", "synthesize" | `summary` |
 
-### Output per questo Task
+### Output for this Task
 
-Il task menziona "budget" (estimation), "team tecnico" (research), e implicitamente richiede valutazione dei ruoli (analysis):
+The task mentions "budget" (estimation), "technical team" (research), and implicitly requires role evaluation (analysis):
 
 ```json
 {
   "detected_capabilities": ["analysis", "estimation", "research"],
   "subtasks": {
-    "analysis": "Analizza i ruoli tecnici necessari per un team ecommerce e le priorità in base alle esigenze operative",
-    "estimation": "Stima i costi mensili per ciascun ruolo tecnico considerando il budget di 30000 dollari",
-    "research": "Fornisci informazioni sui ruoli tecnici standard in un team ecommerce e le competenze richieste"
+    "analysis": "Analyze the technical roles needed for an ecommerce team and priorities based on operational needs",
+    "estimation": "Estimate monthly costs for each technical role considering the 30000 dollar budget",
+    "research": "Provide information on standard technical roles in an ecommerce team and required skills"
   },
   "dependencies": null
 }
@@ -168,15 +168,15 @@ Il task menziona "budget" (estimation), "team tecnico" (research), e implicitame
 
 ---
 
-## Fase 2: DISCOVER - Matching Capability → Agenti
+## Phase 2: DISCOVER - Capability → Agent Matching
 
-**Durata**: <1ms
-**Nodo**: `discover`
-**Componente**: AgentRegistry
+**Duration**: <1ms
+**Node**: `discover`
+**Component**: AgentRegistry
 
-### Come Funziona il Registry
+### How the Registry Works
 
-Ogni agente, alla registrazione, dichiara le proprie **capabilities**:
+Each agent, upon registration, declares its **capabilities**:
 
 ```python
 # agents/router/specialist_agents.py
@@ -185,8 +185,8 @@ class ResearchAgent(LLMAgent):
         config = AgentConfig(
             id="researcher",
             name="Research Agent",
-            description="Ricerca informazioni e dati",
-            capabilities=["research", "search", "info"]  # ← Capabilities dichiarate
+            description="Researches information and data",
+            capabilities=["research", "search", "info"]  # ← Declared capabilities
         )
         super().__init__(config, storage)
 
@@ -207,7 +207,7 @@ class AnalysisAgent(LLMAgent):
         )
 ```
 
-### Algoritmo di Matching
+### Matching Algorithm
 
 ```python
 # agents/graph/nodes.py - discover_node
@@ -215,7 +215,7 @@ def discover_node(state: GraphState, config: RunnableConfig) -> dict:
     matches = []
 
     for capability in state["detected_capabilities"]:
-        # Cerca agenti che dichiarano questa capability
+        # Find agents that declare this capability
         agents = registry.find_by_capability(capability)
 
         matches.append({
@@ -231,7 +231,7 @@ def discover_node(state: GraphState, config: RunnableConfig) -> dict:
 # agents/registry.py
 class AgentRegistry:
     def find_by_capability(self, capability: str) -> list[AgentBase]:
-        """Trova tutti gli agenti che dichiarano una capability."""
+        """Find all agents that declare a capability."""
         result = []
         for agent in self._agents.values():
             if capability in agent.config.capabilities:
@@ -239,36 +239,36 @@ class AgentRegistry:
         return result
 ```
 
-### Risultato del Matching
+### Matching Result
 
-| Capability richiesta | Agenti nel Registry | Match |
+| Requested capability | Agents in Registry | Match |
 |---------------------|---------------------|-------|
 | `analysis` | `analyst` (capabilities: ["analysis", "analyze", "evaluation"]) | ✅ |
 | `estimation` | `estimator` (capabilities: ["estimation", "estimate", "cost"]) | ✅ |
 | `research` | `researcher` (capabilities: ["research", "search", "info"]) | ✅ |
 
-### Cosa Succede se Non c'è Match?
+### What Happens if There's No Match?
 
 ```python
-# Se nessun agente matcha una capability:
+# If no agent matches a capability:
 {
     "capability": "translation",
     "agent_ids": [],
-    "matched": false  # ← Capability non soddisfatta
+    "matched": false  # ← Capability not satisfied
 }
 ```
 
-Nell'Execute Node, le capabilities senza match vengono **saltate** (o gestite con fallback).
+In the Execute Node, capabilities without matches are **skipped** (or handled with fallback).
 
 ---
 
-## Fase 3: EXECUTE - Esecuzione Parallela degli Agenti
+## Phase 3: EXECUTE - Parallel Agent Execution
 
-**Durata Totale**: ~15,120ms
-**Nodo**: `execute`
-**Pattern**: Fan-out parallelo con `asyncio.gather`
+**Total Duration**: ~15,120ms
+**Node**: `execute`
+**Pattern**: Parallel fan-out with `asyncio.gather`
 
-### Meccanismo di Esecuzione
+### Execution Mechanism
 
 ```python
 # agents/graph/nodes.py - execute_node
@@ -278,51 +278,51 @@ async def execute_node(state: GraphState, config: RunnableConfig) -> dict:
 
     for match in state["matches"]:
         if not match["matched"]:
-            continue  # Skip capabilities senza agenti
+            continue  # Skip capabilities without agents
 
         capability = match["capability"]
-        agent_id = match["agent_ids"][0]  # Prende il primo agente disponibile
+        agent_id = match["agent_ids"][0]  # Takes the first available agent
         agent = registry.get(agent_id)
         subtask = state["subtasks"][capability]
 
-        # Crea task async per esecuzione parallela
+        # Create async task for parallel execution
         tasks.append(execute_single_agent(agent, subtask, capability))
 
-    # ESECUZIONE PARALLELA: tutti gli agenti partono insieme
+    # PARALLEL EXECUTION: all agents start together
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     return {"executions": results}
 ```
 
-### Perché Parallelo e Non Sequenziale?
+### Why Parallel and Not Sequential?
 
 ```
-SEQUENZIALE (se fossero dipendenti):
+SEQUENTIAL (if they were dependent):
 ├── Analyst ────────────────▶ (14.9s)
 │                             ├── Estimator ──────▶ (12.3s)
 │                             │                     ├── Researcher ──▶ (15.1s)
 │                             │                     │
-Totale: 14.9 + 12.3 + 15.1 = 42.3 secondi
+Total: 14.9 + 12.3 + 15.1 = 42.3 seconds
 
-PARALLELO (indipendenti):
+PARALLEL (independent):
 ├── Analyst ────────────────▶ (14.9s)
-├── Estimator ──────────────▶ (12.3s)    } Eseguiti contemporaneamente
+├── Estimator ──────────────▶ (12.3s)    } Executed simultaneously
 ├── Researcher ─────────────▶ (15.1s)
 │
-Totale: max(14.9, 12.3, 15.1) = 15.1 secondi
+Total: max(14.9, 12.3, 15.1) = 15.1 seconds
 
-Risparmio: ~64% del tempo
+Savings: ~64% of time
 ```
 
-### Comunicazione Agente ← → Executor
+### Agent ← → Executor Communication
 
-Ogni agente viene invocato con `receive_message()`:
+Each agent is invoked with `receive_message()`:
 
 ```python
 async def execute_single_agent(agent, subtask, capability):
     start = time.time()
 
-    # Chiama l'agente con il subtask
+    # Call the agent with the subtask
     response = await agent.receive_message(
         ctx=agent_context("executor"),
         content=subtask,
@@ -341,7 +341,7 @@ async def execute_single_agent(agent, subtask, capability):
     }
 ```
 
-### Output delle Esecuzioni
+### Execution Output
 
 ```json
 {
@@ -349,21 +349,21 @@ async def execute_single_agent(agent, subtask, capability):
     {
       "agent_id": "analyst",
       "capability": "analysis",
-      "output_text": "# Analisi dei Ruoli Tecnici per Team E-commerce\n\n## TIER 1 - PRIORITÀ CRITICA...",
+      "output_text": "# Technical Role Analysis for E-commerce Team\n\n## TIER 1 - CRITICAL PRIORITY...",
       "duration_ms": 14912,
       "success": true
     },
     {
       "agent_id": "estimator",
       "capability": "estimation",
-      "output_text": "# Stima Costi Mensili per Ruoli Tecnici\n\n| Ruolo | Costo | % Budget |...",
+      "output_text": "# Monthly Cost Estimates for Technical Roles\n\n| Role | Cost | % Budget |...",
       "duration_ms": 12280,
       "success": true
     },
     {
       "agent_id": "researcher",
       "capability": "research",
-      "output_text": "# Ruoli Tecnici Standard in un Team E-commerce\n\n## 1. Full Stack Developer...",
+      "output_text": "# Standard Technical Roles in an E-commerce Team\n\n## 1. Full Stack Developer...",
       "duration_ms": 15120,
       "success": true
     }
@@ -373,62 +373,62 @@ async def execute_single_agent(agent, subtask, capability):
 
 ---
 
-## Fase 4: Decisione Condizionale
+## Phase 4: Conditional Decision
 
-**Funzione**: `should_synthesize(state)`
+**Function**: `should_synthesize(state)`
 
-### Logica di Routing
+### Routing Logic
 
 ```python
 def should_synthesize(state: GraphState) -> str:
-    """Decide se serve sintesi o se l'output è già pronto."""
+    """Decide if synthesis is needed or if output is ready."""
     successful = [e for e in state["executions"] if e.get("success")]
 
     if len(successful) > 1:
-        # Più agenti hanno risposto → serve integrazione
+        # Multiple agents responded → integration needed
         return "synthesize"
     elif len(successful) == 1:
-        # Un solo agente → usa direttamente il suo output
+        # Single agent → use its output directly
         return "end"
     else:
-        # Nessun agente → errore
+        # No agents → error
         return "end"
 ```
 
-### Scenari Possibili
+### Possible Scenarios
 
-| Esecuzioni successful | Decisione | Motivo |
-|-----------------------|-----------|--------|
-| 0 | → END | Errore, nessun output |
-| 1 | → END | Output singolo, non serve sintesi |
-| 2+ | → SYNTHESIZE | Serve integrare multiple risposte |
+| Successful executions | Decision | Reason |
+|-----------------------|----------|--------|
+| 0 | → END | Error, no output |
+| 1 | → END | Single output, no synthesis needed |
+| 2+ | → SYNTHESIZE | Need to integrate multiple responses |
 
-### In questo caso
+### In this case
 
-- Esecuzioni successful: **3** (analyst, estimator, researcher)
-- Condizione `len(successful) > 1`: **True**
-- **Decisione**: → `"synthesize"`
+- Successful executions: **3** (analyst, estimator, researcher)
+- Condition `len(successful) > 1`: **True**
+- **Decision**: → `"synthesize"`
 
 ---
 
-## Fase 5: SYNTHESIZE - Integrazione delle Risposte
+## Phase 5: SYNTHESIZE - Response Integration
 
-**Durata**: 13,000ms
-**Nodo**: `synthesize`
-**Componente**: SynthesizerAgent (LLM-based)
+**Duration**: 13,000ms
+**Node**: `synthesize`
+**Component**: SynthesizerAgent (LLM-based)
 
-### Come il Synthesizer Integra le Risposte
+### How the Synthesizer Integrates Responses
 
-Il Synthesizer riceve **tutti gli output** degli agenti e li combina:
+The Synthesizer receives **all agent outputs** and combines them:
 
 ```python
 # agents/router/synthesizer.py
 SYNTHESIS_PROMPT = """
-Sei un esperto nell'integrare informazioni da fonti multiple.
+You are an expert at integrating information from multiple sources.
 
-TASK ORIGINALE: {original_task}
+ORIGINAL TASK: {original_task}
 
-RISPOSTE DEGLI AGENTI SPECIALIZZATI:
+SPECIALIZED AGENT RESPONSES:
 
 --- ANALYST ---
 {analyst_output}
@@ -439,54 +439,54 @@ RISPOSTE DEGLI AGENTI SPECIALIZZATI:
 --- RESEARCHER ---
 {researcher_output}
 
-ISTRUZIONI:
-1. Combina le informazioni SENZA ripetizioni
-2. Risolvi eventuali CONTRADDIZIONI (es. cifre diverse)
-3. Usa la STRUTTURA più chiara tra quelle proposte
-4. Produci una risposta COMPLETA e ACTIONABLE
+INSTRUCTIONS:
+1. Combine information WITHOUT repetitions
+2. Resolve any CONTRADICTIONS (e.g., different figures)
+3. Use the CLEAREST structure among those proposed
+4. Produce a COMPLETE and ACTIONABLE response
 
-RISPOSTA INTEGRATA:
+INTEGRATED RESPONSE:
 """
 ```
 
-### Criteri di Sintesi
+### Synthesis Criteria
 
-| Aspetto | Strategia |
-|---------|-----------|
-| **Dati numerici** | Preferisce Estimator (specialista costi) |
-| **Lista ruoli** | Unisce Researcher + Analyst senza duplicati |
-| **Priorità** | Segue l'ordine di Analyst (valutazione) |
-| **Competenze tecniche** | Prende dettagli da Researcher |
-| **Struttura** | Usa tabelle dove possibile |
+| Aspect | Strategy |
+|--------|----------|
+| **Numerical data** | Prefer Estimator (cost specialist) |
+| **Role list** | Merge Researcher + Analyst without duplicates |
+| **Priorities** | Follow Analyst's order (evaluation) |
+| **Technical skills** | Take details from Researcher |
+| **Structure** | Use tables where possible |
 
-### Output Sintetizzato
+### Synthesized Output
 
 ```markdown
-# Composizione Team Tecnico E-commerce con Budget $30,000/mese
+# E-commerce Technical Team Composition with $30,000/month Budget
 
-## COMPOSIZIONE TEAM RACCOMANDATA
+## RECOMMENDED TEAM COMPOSITION
 
-| Ruolo | Allocazione Budget | Responsabilità |
-|-------|-------------------|----------------|
-| Senior Full-Stack Developer (Lead) | $10,000/mese (33%) | Architettura, sviluppo |
-| Mid-Level Frontend Developer | $6,000/mese (20%) | UI/UX, React/Next.js |
-| Junior Backend Developer | $4,500/mese (15%) | API, database |
-| QA Engineer | $5,000/mese (17%) | Test automation |
-| DevOps Specialist (Part-time) | $4,500/mese (15%) | Cloud, monitoring |
+| Role | Budget Allocation | Responsibilities |
+|------|-------------------|------------------|
+| Senior Full-Stack Developer (Lead) | $10,000/month (33%) | Architecture, development |
+| Mid-Level Frontend Developer | $6,000/month (20%) | UI/UX, React/Next.js |
+| Junior Backend Developer | $4,500/month (15%) | API, database |
+| QA Engineer | $5,000/month (17%) | Test automation |
+| DevOps Specialist (Part-time) | $4,500/month (15%) | Cloud, monitoring |
 
-**TOTALE: $30,000/mese**
+**TOTAL: $30,000/month**
 ```
 
 ---
 
-## Riepilogo del Flusso
+## Flow Summary
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  1. ANALYZE                                                                  │
-│     Input:  "task in linguaggio naturale"                                   │
+│     Input:  "task in natural language"                                      │
 │     Output: capabilities[], subtasks{}                                      │
-│     Come:   LLM analizza semanticamente → mappa a capabilities note         │
+│     How:    LLM semantically analyzes → maps to known capabilities          │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │ state
                                       ▼
@@ -494,7 +494,7 @@ RISPOSTA INTEGRATA:
 │  2. DISCOVER                                                                 │
 │     Input:  capabilities[]                                                  │
 │     Output: matches[] (capability → agent_ids)                              │
-│     Come:   Registry.find_by_capability() per ogni capability               │
+│     How:    Registry.find_by_capability() for each capability               │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │ state
                                       ▼
@@ -502,41 +502,41 @@ RISPOSTA INTEGRATA:
 │  3. EXECUTE                                                                  │
 │     Input:  matches[], subtasks{}                                           │
 │     Output: executions[] (agent outputs)                                    │
-│     Come:   asyncio.gather() → agent.receive_message() in parallelo         │
+│     How:    asyncio.gather() → agent.receive_message() in parallel          │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │ state
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  4. CONDITION: should_synthesize(state)                                      │
-│     Se executions.success > 1  →  SYNTHESIZE                                │
-│     Altrimenti                 →  END                                       │
+│     If executions.success > 1  →  SYNTHESIZE                                │
+│     Otherwise                  →  END                                       │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │ state
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  5. SYNTHESIZE                                                               │
-│     Input:  executions[] (tutti gli output)                                 │
-│     Output: final_output (risposta integrata)                               │
-│     Come:   LLM combina, deduplica, risolve contraddizioni                  │
+│     Input:  executions[] (all outputs)                                      │
+│     Output: final_output (integrated response)                              │
+│     How:    LLM combines, deduplicates, resolves contradictions             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Tempi di Esecuzione
+## Execution Times
 
-| Fase | Durata | Componente | Note |
-|------|--------|------------|------|
-| ANALYZE | 4,100ms | LLM (Claude) | Decomposizione semantica |
-| DISCOVER | <1ms | Registry (in-memory) | Lookup O(n) |
-| EXECUTE | 15,120ms | 3x LLM paralleli | Tempo = max(agenti) |
-| CONDITION | <1ms | Python logic | Semplice if |
-| SYNTHESIZE | 13,000ms | LLM (Claude) | Integrazione |
-| **TOTALE** | **~32,200ms** | | |
+| Phase | Duration | Component | Notes |
+|-------|----------|-----------|-------|
+| ANALYZE | 4,100ms | LLM (Claude) | Semantic decomposition |
+| DISCOVER | <1ms | Registry (in-memory) | O(n) lookup |
+| EXECUTE | 15,120ms | 3x parallel LLMs | Time = max(agents) |
+| CONDITION | <1ms | Python logic | Simple if |
+| SYNTHESIZE | 13,000ms | LLM (Claude) | Integration |
+| **TOTAL** | **~32,200ms** | | |
 
 ---
 
-## Struttura del Codice
+## Code Structure
 
 ### Graph Builder
 
@@ -545,18 +545,18 @@ RISPOSTA INTEGRATA:
 def build_router_graph() -> CompiledStateGraph:
     graph = StateGraph(GraphState)
 
-    # Nodi (funzioni async)
+    # Nodes (async functions)
     graph.add_node("analyze", analyze_node)
     graph.add_node("discover", discover_node)
     graph.add_node("execute", execute_node)
     graph.add_node("synthesize", synthesize_node)
 
-    # Edges (flusso)
+    # Edges (flow)
     graph.add_edge(START, "analyze")
     graph.add_edge("analyze", "discover")
     graph.add_edge("discover", "execute")
 
-    # Conditional edge (routing dinamico)
+    # Conditional edge (dynamic routing)
     graph.add_conditional_edges(
         "execute",
         should_synthesize,
@@ -570,27 +570,27 @@ def build_router_graph() -> CompiledStateGraph:
 
 ---
 
-## Nota: Visualizzazione UI (SSE)
+## Note: UI Visualization (SSE)
 
-La visualizzazione del grafo in tempo reale usa **Server-Sent Events (SSE)** per aggiornare la UI nel browser. Questo è **solo per osservabilità** - il sistema funziona identicamente senza UI.
+Real-time graph visualization uses **Server-Sent Events (SSE)** to update the UI in the browser. This is **for observability only** - the system works identically without the UI.
 
 ```
-Backend                              Frontend (opzionale)
+Backend                              Frontend (optional)
    │                                       │
    │  emit_event({"node": "running"})      │
    │  ────────────────────────────────────▶│  vis.js update
    │                                       │
-   │  (il lavoro vero avviene qui)         │
+   │  (the real work happens here)         │
    │                                       │
    │  emit_event({"node": "completed"})    │
    │  ────────────────────────────────────▶│  vis.js update
 ```
 
-SSE è un side-effect per debug/demo, non parte della logica di orchestrazione.
+SSE is a side-effect for debug/demo, not part of the orchestration logic.
 
 ---
 
-## Link Correlati
+## Related Links
 
 - [LangGraph Pattern](./langgraph-pattern.md)
 - [Router Pattern](./router-pattern.md)
